@@ -44,6 +44,7 @@
         >
           获取手机号
         </van-button>
+        <BindPhoneDialog v-model:show="showBindPhone" @bind-success="onBindPhone" />
         <van-button
           size="small"
           type="warning"
@@ -164,8 +165,11 @@
 
 <script>
 import { ref, onMounted } from "vue";
+import BindPhoneDialog from "../components/BindPhoneDialog.vue";
 import { useRouter } from "vue-router";
-import { Toast } from "vant";
+import { showToast, showLoadingToast, closeToast } from "vant";
+
+
 import wxUtils from "../utils/wxUtils";
 
 export default {
@@ -174,6 +178,7 @@ export default {
     const router = useRouter();
     const userInfo = ref(null);
     const showAuthDialog = ref(false);
+    const showBindPhone = ref(false);
 
     // 跳转到套餐详情页
     const goToPackageDetail = () => {
@@ -194,10 +199,7 @@ export default {
 
         if (code) {
           // 如果URL中有code，说明用户已授权，获取用户信息
-          Toast.loading({
-            message: "获取用户信息...",
-            forbidClick: true,
-          });
+          showLoadingToast({ message: "获取用户信息...", forbidClick: true });
 
           const userInfoData = await wxUtils.getUserInfoByCode(code);
 
@@ -211,7 +213,7 @@ export default {
           }
 
           userInfo.value = userInfoData;
-          Toast.clear();
+          closeToast();
 
           // 将用户信息存储到本地
           localStorage.setItem("userInfo", JSON.stringify(userInfoData));
@@ -228,7 +230,7 @@ export default {
         }
       } catch (error) {
         console.error("微信授权失败", error);
-        Toast.fail("获取用户信息失败");
+        showToast("获取用户信息失败");
       }
     };
 
@@ -242,7 +244,7 @@ export default {
     const handleGetWxUser = async () => {
       try {
         if (userInfo.value && userInfo.value.openid) {
-          Toast.success("已获取用户信息");
+          showToast("已获取用户信息");
           return;
         }
         const code = wxUtils.getAuthCodeFromUrl();
@@ -251,15 +253,15 @@ export default {
           showAuthDialog.value = true;
           return;
         }
-        Toast.loading({ message: "获取用户信息...", forbidClick: true });
+        showLoadingToast({ message: "获取用户信息...", forbidClick: true });
         const info = await wxUtils.getUserInfoByCode(code);
         userInfo.value = info;
         localStorage.setItem("userInfo", JSON.stringify(info));
-        Toast.clear();
-        Toast.success("获取成功");
+        closeshowToast();
+        showToast("获取成功");
       } catch (e) {
-        Toast.clear();
-        Toast.fail(e.message || "获取失败");
+        closeshowToast();
+        showToast(e.message || "获取失败");
       }
     };
 
@@ -267,25 +269,25 @@ export default {
     const handleGetPhone = async () => {
       try {
         if (!userInfo.value) {
-          Toast("请先获取微信用户信息");
+          showToast("请先获取微信用户信息");
           return;
         }
-        Toast.loading({ message: "获取手机号...", forbidClick: true });
+        showBindPhone.value = true; // H5 替代：弹出绑定手机号对话框
         const phone = await wxUtils.getPhoneNumber();
         userInfo.value.phoneNumber = phone;
         localStorage.setItem("userInfo", JSON.stringify(userInfo.value));
-        Toast.clear();
-        Toast.success("已获取手机号");
+        closeshowToast();
+        showToast("已获取手机号");
       } catch (e) {
-        Toast.clear();
-        Toast.fail(e.message || "获取手机号失败");
+        closeshowToast();
+        showToast(e.message || "获取手机号失败");
       }
     };
 
     // 根据手机号查询课程
     const handleFindCoursesByPhone = () => {
       if (!userInfo.value || !userInfo.value.phoneNumber) {
-        Toast("请先获取手机号");
+        showToast("请先获取手机号");
         return;
       }
       router.push({
@@ -325,9 +327,17 @@ export default {
       checkWechatAuth();
     });
 
+    const onBindPhone = ({ phoneNumber }) => {
+      userInfo.value = userInfo.value || {};
+      userInfo.value.phoneNumber = phoneNumber;
+      localStorage.setItem("userInfo", JSON.stringify(userInfo.value));
+      showToast("手机号绑定成功");
+    };
+
     return {
       userInfo,
       showAuthDialog,
+      showBindPhone,
       goToPackageDetail,
       formatPhone,
       handleAuthConfirm,
@@ -335,6 +345,7 @@ export default {
       handleGetPhone,
       handleFindCoursesByPhone,
       goToCustomerService,
+      onBindPhone,
     };
   },
 };

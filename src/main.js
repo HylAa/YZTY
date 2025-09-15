@@ -8,7 +8,6 @@ import "./assets/css/global.css";
 import {
   Button,
   Dialog,
-  Toast,
   Icon,
   Cell,
   CellGroup,
@@ -34,14 +33,14 @@ import {
   Skeleton,
   Badge,
 } from "vant";
-import "vant/lib/index.css";
+import "vant/lib/index.css"; // Vite 环境保留样式引入
 
 const app = createApp(App);
 
 // 注册Vant组件
 app.use(Button);
 app.use(Dialog);
-app.use(Toast);
+// Vant 4 中 Toast 改为函数式调用，无需注册插件
 app.use(Icon);
 app.use(Cell);
 app.use(CellGroup);

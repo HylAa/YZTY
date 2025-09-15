@@ -1,5 +1,5 @@
 import api from "../../api";
-import { Toast } from "vant";
+import { showToast, showLoadingToast, closeToast } from "vant";
 
 const state = {
   enrolledCourses: [],
@@ -135,14 +135,14 @@ const actions = {
         // Update localStorage
         localStorage.setItem("user", JSON.stringify(response.data.user));
 
-        Toast.success("个人资料已更新");
+        showToast("个人资料已更新");
         return true;
       }
     } catch (error) {
       console.error("Failed to update profile:", error);
       const message = error.response?.data?.message || "更新失败，请稍后再试";
       commit("setError", message);
-      Toast.fail(message);
+      showToast(message);
       return false;
     } finally {
       commit("setLoading", false);

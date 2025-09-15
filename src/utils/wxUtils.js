@@ -68,7 +68,7 @@ const wxUtils = {
   oauthLogin(redirectUrl) {
     // 构建授权链接，redirectUrl需要urlencode
     const encodedUrl = encodeURIComponent(redirectUrl || window.location.href);
-    const appId = process.env.VUE_APP_WECHAT_APPID; // 从环境变量获取
+    const appId = import.meta.env.VITE_WECHAT_APPID; // 从 Vite 环境变量获取
 
     // 构建授权URL，scope=snsapi_userinfo 表示获取用户基本信息
     const authUrl = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appId}&redirect_uri=${encodedUrl}&response_type=code&scope=snsapi_userinfo&state=STATE#wechat_redirect`;

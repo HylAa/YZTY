@@ -9,6 +9,9 @@
     />
 
     <div class="page-content">
+      <div v-if="phoneQuery" class="phone-filter">
+        按手机号筛选：{{ phoneQuery }}
+      </div>
       <!-- Course Type Tabs -->
       <van-tabs v-model="activeType" sticky>
         <van-tab
@@ -130,13 +133,6 @@ export default {
     // Load courses on mount
     onMounted(() => {
       fetchCourses();
-      // 若带手机号查询参数，可在此触发后端按手机号筛选（如有接口）
-      if (phoneQuery.value) {
-        // 这里保留占位：根据实际后端API调整
-        // 示例：store.dispatch('courses/fetchCourses', { phone: phoneQuery.value })
-        // 临时提示
-        console.log("按手机号查询课程：", phoneQuery.value);
-      }
     });
 
     // Watch for active type changes
@@ -153,11 +149,10 @@ export default {
     // Fetch courses
     const fetchCourses = async () => {
       try {
-        if (activeType.value) {
-          await store.dispatch("courses/fetchCoursesByType", activeType.value);
-        } else {
-          await store.dispatch("courses/fetchCourses");
-        }
+        const query = {};
+        if (activeType.value) query.type = activeType.value;
+        if (phoneQuery.value) query.phone = phoneQuery.value;
+        await store.dispatch("courses/fetchCourses", query);
       } catch (error) {
         console.error("Failed to fetch courses:", error);
       }
@@ -181,9 +176,19 @@ export default {
       router.back();
     };
 
+    // Watch url phone param changes
+    watch(
+      () => route.query.phone,
+      (newPhone) => {
+        phoneQuery.value = newPhone || "";
+        fetchCourses();
+      }
+    );
+
     return {
       categories,
       activeType,
+      phoneQuery,
       refreshing,
       loading,
       filteredCourses,
@@ -203,6 +208,12 @@ export default {
 
 .page-content {
   padding-bottom: 50px;
+}
+
+.phone-filter {
+  padding: 8px 12px;
+  color: #646566;
+  font-size: 12px;
 }
 
 .course-container {
