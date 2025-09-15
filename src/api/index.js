@@ -1,0 +1,80 @@
+import axios from "axios";
+
+// API base URL
+const API_URL = "http://localhost:5000/api";
+
+// Create axios instance
+const apiClient = axios.create({
+  baseURL: API_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Add request interceptor for authentication
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for error handling
+apiClient.interceptors.response.use(
+  (response) => {
+    return response.data;
+  },
+  (error) => {
+    // Handle token expiration
+    if (error.response && error.response.status === 401) {
+      // Clear local storage
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
+      // Redirect to login page if not already there
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default {
+  // Auth endpoints
+  auth: {
+    login: (credentials) => apiClient.post("/auth/login", credentials),
+    register: (userData) => apiClient.post("/auth/register", userData),
+    getCurrentUser: () => apiClient.get("/auth/me"),
+    logout: () => apiClient.get("/auth/logout"),
+  },
+
+  // User endpoints
+  user: {
+    getUser: (id) => apiClient.get(`/users/${id}`),
+    updateUser: (id, userData) => apiClient.put(`/users/${id}`, userData),
+    enrollCourse: (userId, courseId) =>
+      apiClient.post(`/users/${userId}/enroll/${courseId}`),
+    updateRemainingSessions: (userId, courseId, remainingSessions) =>
+      apiClient.put(`/users/${userId}/courses/${courseId}/sessions`, {
+        remainingSessions,
+      }),
+  },
+
+  // Course endpoints
+  courses: {
+    getCourses: (params) => apiClient.get("/courses", { params }),
+    getCourse: (id) => apiClient.get(`/courses/${id}`),
+    getFeaturedCourses: (limit) =>
+      apiClient.get("/courses/featured", { params: { limit } }),
+    getCoursesByType: (type) => apiClient.get(`/courses/types/${type}`),
+    addReview: (courseId, reviewData) =>
+      apiClient.post(`/courses/${courseId}/reviews`, reviewData),
+  },
+};
