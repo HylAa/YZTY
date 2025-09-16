@@ -44,7 +44,11 @@
         >
           获取手机号
         </van-button>
-        <BindPhoneDialog v-model:show="showBindPhone" @bind-success="onBindPhone" />
+        <BindPhoneDialog
+          v-model:show="showBindPhone"
+          :openid="userInfo?.openid || ''"
+          @bind-success="onBindPhone"
+        />
         <van-button
           size="small"
           type="warning"
@@ -151,7 +155,8 @@
 
     <!-- 授权弹窗 -->
     <van-dialog
-      v-model="showAuthDialog"
+      :show="showAuthDialog"
+      @update:show="showAuthDialog = $event"
       title="授权提示"
       confirm-button-text="确认授权"
       @confirm="handleAuthConfirm"
@@ -174,6 +179,7 @@ import wxUtils from "../utils/wxUtils";
 
 export default {
   name: "Home",
+  components: { BindPhoneDialog },
   setup() {
     const router = useRouter();
     const userInfo = ref(null);
@@ -191,46 +197,56 @@ export default {
       return phone.replace(/(\d{3})(\d{4})(\d{4})/, "$1****$3");
     };
 
+    // 统一处理并持久化微信用户信息
+    const persistUserInfo = (info, { triggerBindPopup = false } = {}) => {
+      if (!info) return;
+      const normalizedPhone =
+        info.phoneNumber || info.phone || info.phone_number || "";
+      const normalized = {
+        ...info,
+        phoneNumber: normalizedPhone,
+        phone: normalizedPhone || null,
+      };
+      userInfo.value = normalized;
+      localStorage.setItem("userInfo", JSON.stringify(normalized));
+      if (triggerBindPopup && !normalizedPhone) {
+        showBindPhone.value = true;
+      }
+    };
+
     // 检查微信授权并获取用户信息
     const checkWechatAuth = async () => {
       try {
-        // 获取URL中的code参数
         const code = wxUtils.getAuthCodeFromUrl();
 
         if (code) {
-          // 如果URL中有code，说明用户已授权，获取用户信息
           showLoadingToast({ message: "获取用户信息...", forbidClick: true });
-
-          const userInfoData = await wxUtils.getUserInfoByCode(code);
-
-          // 尝试获取用户手机号
           try {
-            const phoneNumber = await wxUtils.getPhoneNumber();
-            userInfoData.phoneNumber = phoneNumber;
-          } catch (error) {
-            console.log("获取手机号失败", error);
-            // 获取手机号失败不影响主流程
+            const userInfoData = await wxUtils.getUserInfoByCode(code);
+            persistUserInfo(userInfoData, { triggerBindPopup: true });
+          } finally {
+            closeToast();
           }
-
-          userInfo.value = userInfoData;
-          closeToast();
-
-          // 将用户信息存储到本地
-          localStorage.setItem("userInfo", JSON.stringify(userInfoData));
         } else {
-          // 尝试从本地存储获取用户信息
           const storedUserInfo = localStorage.getItem("userInfo");
 
           if (storedUserInfo) {
-            userInfo.value = JSON.parse(storedUserInfo);
+            try {
+              const parsed = JSON.parse(storedUserInfo);
+              persistUserInfo(parsed, { triggerBindPopup: false });
+            } catch (e) {
+              console.warn("本地用户信息解析失败", e);
+              localStorage.removeItem("userInfo");
+              showAuthDialog.value = true;
+            }
           } else {
-            // 显示授权提示弹窗
             showAuthDialog.value = true;
           }
         }
       } catch (error) {
         console.error("微信授权失败", error);
         showToast("获取用户信息失败");
+        closeToast();
       }
     };
 
@@ -244,23 +260,28 @@ export default {
     const handleGetWxUser = async () => {
       try {
         if (userInfo.value && userInfo.value.openid) {
-          showToast("已获取用户信息");
+          if (!userInfo.value.phoneNumber) {
+            showBindPhone.value = true;
+          } else {
+            showToast("已获取用户信息");
+          }
           return;
         }
         const code = wxUtils.getAuthCodeFromUrl();
         if (!code) {
-          // 弹窗提示或直接跳转授权
           showAuthDialog.value = true;
           return;
         }
         showLoadingToast({ message: "获取用户信息...", forbidClick: true });
-        const info = await wxUtils.getUserInfoByCode(code);
-        userInfo.value = info;
-        localStorage.setItem("userInfo", JSON.stringify(info));
-        closeshowToast();
-        showToast("获取成功");
+        try {
+          const info = await wxUtils.getUserInfoByCode(code);
+          persistUserInfo(info, { triggerBindPopup: true });
+          showToast("获取成功");
+        } finally {
+          closeToast();
+        }
       } catch (e) {
-        closeshowToast();
+        closeToast();
         showToast(e.message || "获取失败");
       }
     };
@@ -272,15 +293,20 @@ export default {
           showToast("请先获取微信用户信息");
           return;
         }
-        showBindPhone.value = true; // H5 替代：弹出绑定手机号对话框
-        const phone = await wxUtils.getPhoneNumber();
-        userInfo.value.phoneNumber = phone;
-        localStorage.setItem("userInfo", JSON.stringify(userInfo.value));
-        closeshowToast();
-        showToast("已获取手机号");
+        if (!userInfo.value.openid) {
+          showToast("请先完成微信授权");
+          showAuthDialog.value = true;
+          return;
+        }
+        if (userInfo.value.phoneNumber) {
+          showToast("已绑定手机号");
+          return;
+        }
+
+        // 在公众号网页环境，直接显示手机号绑定对话框
+        showBindPhone.value = true;
       } catch (e) {
-        closeshowToast();
-        showToast(e.message || "获取手机号失败");
+        showToast(e.message || "操作失败");
       }
     };
 
@@ -302,8 +328,11 @@ export default {
         // 获取当前页面URL
         const url = window.location.href.split("#")[0];
 
-        // 从后端获取微信JS-SDK配置
+        // 从后端获取微信JS-SDK配置（非微信内将跳过）
         const config = await wxUtils.getJssdkConfig(url);
+        if (config && config.skip) {
+          return; // 非微信环境，直接跳过初始化
+        }
 
         // 初始化微信JS-SDK
         await wxUtils.initJssdkConfig(config);
@@ -327,10 +356,15 @@ export default {
       checkWechatAuth();
     });
 
-    const onBindPhone = ({ phoneNumber }) => {
-      userInfo.value = userInfo.value || {};
-      userInfo.value.phoneNumber = phoneNumber;
-      localStorage.setItem("userInfo", JSON.stringify(userInfo.value));
+    const onBindPhone = ({ phoneNumber, user }) => {
+      const merged = {
+        ...(userInfo.value || {}),
+        ...(user || {}),
+        phoneNumber,
+        phone: phoneNumber,
+      };
+      persistUserInfo(merged, { triggerBindPopup: false });
+      showBindPhone.value = false;
       showToast("手机号绑定成功");
     };
 

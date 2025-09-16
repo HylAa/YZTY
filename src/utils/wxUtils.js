@@ -1,12 +1,17 @@
 /**
  * 微信相关工具函数
  */
-import axios from "axios";
+import api from "../api";
 
 // 声明全局wx对象，来自微信JSSDK
 /* global wx */
 
 const wxUtils = {
+  /** 判断是否在微信内 */
+  isWechat() {
+    return /MicroMessenger/i.test(navigator.userAgent || "");
+  },
+
   /**
    * 初始化微信JS-SDK配置
    * @param {Object} config 配置信息，从后端获取
@@ -15,7 +20,7 @@ const wxUtils = {
   initJssdkConfig(config) {
     return new Promise((resolve, reject) => {
       wx.config({
-        debug: process.env.NODE_ENV === "development", // 开发环境开启debug模式
+        debug: import.meta.env.DEV, // Vite 环境：开发模式开启 debug
         appId: config.appId,
         timestamp: config.timestamp,
         nonceStr: config.nonceStr,
@@ -53,11 +58,15 @@ const wxUtils = {
    * @returns {Promise}
    */
   getJssdkConfig(url) {
-    return axios.post("/api/wechat/jssdkConfig", { url }).then((res) => {
-      if (res.data.code === 0) {
-        return res.data.data;
+    // 若非微信内，直接跳过并返回空配置，避免本地开发 403
+    if (!this.isWechat()) {
+      return Promise.resolve({ skip: true });
+    }
+    return api.wechat.getJssdkConfig(url).then((res) => {
+      if (res.code === 0) {
+        return res.data;
       }
-      throw new Error(res.data.message || "获取微信配置失败");
+      throw new Error(res.message || "获取微信配置失败");
     });
   },
 
@@ -66,12 +75,21 @@ const wxUtils = {
    * @param {String} redirectUrl 授权后的回调地址
    */
   oauthLogin(redirectUrl) {
-    // 构建授权链接，redirectUrl需要urlencode
-    const encodedUrl = encodeURIComponent(redirectUrl || window.location.href);
-    const appId = import.meta.env.VITE_WECHAT_APPID; // 从 Vite 环境变量获取
+    // 从 Vite 环境变量获取 AppID 与重定向域名
+    const appId = import.meta.env.VITE_WECHAT_APPID;
+    const origin = import.meta.env.VITE_WECHAT_REDIRECT_ORIGIN || window.location.origin;
+    if (!appId) {
+      console.error("VITE_WECHAT_APPID 未配置，无法发起微信授权");
+      alert("微信 AppID 未配置，请联系管理员");
+      return;
+    }
+    // 使用配置域名拼接当前路径，去掉 hash 片段
+    const pathAndQuery = window.location.pathname + window.location.search;
+    const finalRedirect = (redirectUrl || origin + pathAndQuery).split("#")[0];
+    const encodedUrl = encodeURIComponent(finalRedirect);
+    const scope = "snsapi_userinfo"; // 或根据需求使用 snsapi_base
 
-    // 构建授权URL，scope=snsapi_userinfo 表示获取用户基本信息
-    const authUrl = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appId}&redirect_uri=${encodedUrl}&response_type=code&scope=snsapi_userinfo&state=STATE#wechat_redirect`;
+    const authUrl = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appId}&redirect_uri=${encodedUrl}&response_type=code&scope=${scope}&state=STATE#wechat_redirect`;
 
     // 跳转到微信授权页
     window.location.href = authUrl;
@@ -93,42 +111,50 @@ const wxUtils = {
    * @returns {Promise}
    */
   getUserInfoByCode(code) {
-    return axios.post("/api/wechat/getUserInfo", { code }).then((res) => {
-      if (res.data.code === 0) {
-        return res.data.data;
+    return api.wechat.getUserInfoByCode(code).then((res) => {
+      if (res.code === 0) {
+        return res.data;
       }
-      throw new Error(res.data.message || "获取用户信息失败");
+      throw new Error(res.message || "获取用户信息失败");
     });
   },
 
   /**
-   * 获取微信手机号
-   * 注意：这需要用户已关注公众号，且公众号为认证服务号
+   * 获取微信手机号（仅小程序支持）
+   * 注意：公众号网页无法直接获取手机号，需要用户手动输入
+   * 此方法仅在小程序环境下有效
+   * @param {Object} e - 小程序按钮事件对象
    * @returns {Promise}
    */
-  getPhoneNumber() {
+  getPhoneNumber(e) {
     return new Promise((resolve, reject) => {
-      // 此处需要企业微信或认证服务号才能调用
-      wx.invoke("getPhoneNumber", {}, function (res) {
-        if (res.err_msg === "getPhoneNumber:ok") {
-          // 提交到后台解密
-          axios
-            .post("/api/wechat/decryptPhoneNumber", {
-              encryptedData: res.encryptedData,
-              iv: res.iv,
-            })
-            .then((res) => {
-              if (res.data.code === 0) {
-                resolve(res.data.data.phoneNumber);
-              } else {
-                reject(new Error(res.data.message || "获取手机号失败"));
-              }
-            })
-            .catch(reject);
-        } else {
-          reject(new Error(res.err_msg || "获取手机号失败"));
-        }
-      });
+      // 检查是否在小程序环境
+      if (!window.__wxjs_environment || window.__wxjs_environment !== 'miniprogram') {
+        reject(new Error("获取手机号仅在小程序环境支持，公众号网页请使用手动绑定"));
+        return;
+      }
+
+      // 小程序环境：从事件对象中获取加密数据
+      if (e && e.detail && e.detail.encryptedData) {
+        // 提交到后台解密
+        api.wechat
+          .decryptPhoneNumber({
+            encryptedData: e.detail.encryptedData,
+            iv: e.detail.iv,
+            // 需要提供 code 或 session_key
+            code: e.detail.code,
+          })
+          .then((res) => {
+            if (res.code === 0) {
+              resolve(res.data.phoneNumber);
+            } else {
+              reject(new Error(res.message || "获取手机号失败"));
+            }
+          })
+          .catch(reject);
+      } else {
+        reject(new Error("未获取到手机号授权"));
+      }
     });
   },
 };

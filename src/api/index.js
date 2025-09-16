@@ -11,6 +11,15 @@ const apiClient = axios.create({
   },
 });
 
+// 微信相关接口使用独立实例，避免受 `/api` 前缀影响
+const wechatBaseUrl = import.meta.env.VITE_API_BASE || "";
+const wechatClient = axios.create({
+  baseURL: wechatBaseUrl,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
 // Add request interceptor for authentication
 apiClient.interceptors.request.use(
   (config) => {
@@ -46,6 +55,11 @@ apiClient.interceptors.response.use(
   }
 );
 
+wechatClient.interceptors.response.use(
+  (response) => response.data,
+  (error) => Promise.reject(error)
+);
+
 export default {
   // Auth endpoints
   auth: {
@@ -76,5 +90,15 @@ export default {
     getCoursesByType: (type) => apiClient.get(`/courses/types/${type}`),
     addReview: (courseId, reviewData) =>
       apiClient.post(`/courses/${courseId}/reviews`, reviewData),
+  },
+
+  // WeChat endpoints
+  wechat: {
+    getJssdkConfig: (url) => wechatClient.post("/wechat/jssdkConfig", { url }),
+    getUserInfoByCode: (code) =>
+      wechatClient.post("/wechat/getUserInfo", { code }),
+    bindPhone: (payload) => wechatClient.post("/wechat/bindPhone", payload),
+    decryptPhoneNumber: (payload) =>
+      wechatClient.post("/wechat/decryptPhoneNumber", payload),
   },
 };

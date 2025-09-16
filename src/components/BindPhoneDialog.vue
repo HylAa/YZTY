@@ -4,6 +4,8 @@
     @update:show="$emit('update:show', $event)"
     title="绑定手机号"
     show-cancel-button
+    :confirm-button-loading="submitting"
+    :confirm-button-disabled="submitting"
     @confirm="onConfirm"
   >
     <van-form @submit.prevent="onConfirm">
@@ -36,17 +38,20 @@
 <script>
 import { ref, watch } from 'vue';
 import { showToast } from 'vant';
+import api from '../api';
 
 export default {
   name: 'BindPhoneDialog',
   props: {
     show: { type: Boolean, default: false },
+    openid: { type: String, default: '' },
   },
   emits: ['update:show', 'bind-success'],
   setup(props, { emit }) {
     const phone = ref('');
     const code = ref('');
     const countdown = ref(0);
+    const submitting = ref(false);
     let timer = null;
 
     const validatePhone = (val) => /^1\d{10}$/.test(val);
@@ -69,7 +74,9 @@ export default {
     };
 
     const onConfirm = async () => {
-      if (!validatePhone(phone.value)) {
+      if (submitting.value) return;
+      const normalizedPhone = phone.value.trim();
+      if (!validatePhone(normalizedPhone)) {
         showToast('请输入正确手机号');
         return;
       }
@@ -77,14 +84,33 @@ export default {
         showToast('请输入有效验证码');
         return;
       }
-      // TODO: 调用后端校验接口 /api/sms/verify 并绑定
-      emit('bind-success', { phoneNumber: phone.value });
-      emit('update:show', false);
-      phone.value = '';
-      code.value = '';
-      if (timer) clearInterval(timer);
-      countdown.value = 0;
-      showToast('绑定成功');
+      if (!props.openid) {
+        showToast('缺少微信用户标识，请重新授权');
+        return;
+      }
+      submitting.value = true;
+      try {
+        const res = await api.wechat.bindPhone({
+          openid: props.openid,
+          phone: normalizedPhone,
+        });
+        if (res.code !== 0) {
+          throw new Error(res.message || '绑定失败');
+        }
+        emit('bind-success', {
+          phoneNumber: normalizedPhone,
+          user: res.data,
+        });
+        emit('update:show', false);
+        phone.value = '';
+        code.value = '';
+        if (timer) clearInterval(timer);
+        countdown.value = 0;
+      } catch (error) {
+        showToast(error.message || '绑定失败，请稍后再试');
+      } finally {
+        submitting.value = false;
+      }
     };
 
     watch(() => props.show, (val) => {
@@ -93,10 +119,11 @@ export default {
         code.value = '';
         if (timer) clearInterval(timer);
         countdown.value = 0;
+        submitting.value = false;
       }
     });
 
-    return { phone, code, countdown, validatePhone, sendCode, onConfirm };
+    return { phone, code, countdown, validatePhone, sendCode, onConfirm, submitting };
   }
 };
 </script>
