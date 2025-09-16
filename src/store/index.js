@@ -6,7 +6,7 @@ import user from "./modules/user";
 import admin from "./modules/admin";
 
 // API基础URL
-const API_URL = process.env.VUE_APP_API_URL || "http://localhost:5000/api";
+const API_URL = import.meta.env.VITE_API_BASE ? `${import.meta.env.VITE_API_BASE}/api` : "/api";
 
 // 配置axios
 axios.defaults.baseURL = API_URL;
