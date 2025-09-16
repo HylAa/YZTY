@@ -5,7 +5,7 @@ use sqlx::{Error, FromRow};
 /// 数据库中的微信用户记录
 #[derive(Debug, Clone, FromRow)]
 pub struct WechatUser {
-    pub id: i64,
+    pub id: u64,
     pub openid: String,
     pub nickname: Option<String>,
     pub avatar: Option<String>,
