@@ -12,7 +12,12 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: env.VITE_API_BASE || 'http://localhost:5000',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, '/api'),
+          rewrite: (path) => path,
+        },
+        '/wechat': {
+          target: env.VITE_API_BASE || 'http://localhost:5000',
+          changeOrigin: true,
+          rewrite: (path) => path,
         },
       },
     },
