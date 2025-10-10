@@ -2,6 +2,7 @@ use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{MySql, Pool};
 use std::time::Duration;
 
+pub mod student_course;
 pub mod wechat_user;
 
 pub type DbPool = Pool<MySql>;
@@ -66,4 +67,3 @@ pub async fn init_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error> {
         .connect(&database_url)
         .await
 }
-

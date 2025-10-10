@@ -92,6 +92,12 @@ export default {
       apiClient.post(`/courses/${courseId}/reviews`, reviewData),
   },
 
+  // 学员接口
+  student: {
+    getCoursesByPhone: (phone) =>
+      apiClient.get("/student/courses", { params: { phone } }),
+  },
+
   // WeChat endpoints
   wechat: {
     getJssdkConfig: (url) => wechatClient.post("/wechat/jssdkConfig", { url }),

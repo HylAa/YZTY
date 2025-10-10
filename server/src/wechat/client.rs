@@ -247,7 +247,7 @@ impl WechatClient {
     }
 
     pub async fn get_phone_session(&self, code: &str) -> Result<WxSessionResponse, String> {
-        let access_token = self.get_access_token().await?;
+        let _ = self.get_access_token().await?;
 
         let url = format!(
             "{}/sns/jscode2session?appid={}&secret={}&js_code={}&grant_type=authorization_code",

@@ -1,145 +1,147 @@
 <template>
   <div class="package-page">
     <div class="nav-bar">
-      <div class="nav-left"></div>
+      <div class="nav-left" />
       <div class="nav-title">我的课程套餐</div>
       <div class="nav-right">
         <van-icon name="question-o" size="20" @click="goToCustomerService" />
         <span class="service-number" @click="goToCustomerService">客服</span>
-        <!-- <van-icon name="expand-o" size="20" /> -->
       </div>
     </div>
 
-    <div class="user-info">
-      <template v-if="userInfo">
-        <div class="user-avatar" v-if="userInfo.headimgurl">
-          <img :src="userInfo.headimgurl" alt="头像" />
-        </div>
-        <h2 class="user-id">
-          {{ userInfo.nickname || "用户" }}
-          <span v-if="userInfo.phoneNumber">{{
-            formatPhone(userInfo.phoneNumber)
-          }}</span>
-        </h2>
-      </template>
-      <template v-else>
-        <h2 class="user-id">138****8999 张*</h2>
-      </template>
-      <div class="user-tags">
-        <span class="tag card-tag">健身爱好者</span>
-        <span class="tag star-tag">普通会员</span>
-      </div>
-
-      <!-- 微信授权/手机号 获取按钮 -->
-      <div class="wx-actions">
-        <van-button size="small" type="primary" round @click="handleGetWxUser">
-          获取微信用户信息
-        </van-button>
-        <van-button
-          size="small"
-          type="success"
-          round
-          class="ml-8"
-          @click="handleGetPhone"
-        >
-          获取手机号
-        </van-button>
-        <BindPhoneDialog
-          v-model:show="showBindPhone"
-          :openid="userInfo?.openid || ''"
-          @bind-success="onBindPhone"
-        />
-        <van-button
-          size="small"
-          type="warning"
-          round
-          class="ml-8"
-          @click="handleFindCoursesByPhone"
-        >
-          按手机号查课程
-        </van-button>
-      </div>
-    </div>
-
-    <div class="package-card" @click="goToPackageDetail">
-      <div class="package-header">
-        <div class="package-title">
-          <span class="package-name">篮球/羽毛球套餐 1280元</span>
-          <van-icon name="info-o" size="16" color="#fff" />
-        </div>
-        <div class="package-price">(1280.00元)</div>
-      </div>
-      <div class="package-actions">
-        <button class="action-btn">剩余课时</button>
-        <button class="action-btn">套餐详情</button>
-      </div>
-    </div>
-
-    <div class="tab-container">
-      <div class="tabs">
-        <div class="tab active">套餐课程</div>
-        <!-- <div class="tab">增值服务</div> -->
-      </div>
-
-      <div class="resource-list">
-        <!-- 篮球 -->
-        <div class="resource-item">
-          <div class="resource-title">
-            <div class="dot blue"></div>
-            <span>篮球</span>
-          </div>
-
-          <div class="resource-detail">
-            <div class="resource-subtitle">基础技能训练</div>
-            <div class="resource-row">
-              <div class="resource-name">
-                <span>- 专业篮球课程</span>
-              </div>
-              <div class="resource-total">总计：30节</div>
+    <div class="content">
+      <section class="user-section">
+        <div class="user-info">
+          <template v-if="userInfo">
+            <div v-if="userInfo.headimgurl" class="user-avatar">
+              <img :src="userInfo.headimgurl" alt="头像" />
             </div>
+            <h2 class="user-id">
+              {{ userInfo.nickname || "学员" }}
+              <span v-if="currentPhone">{{ formattedPhone }}</span>
+            </h2>
+          </template>
+          <template v-else>
+            <h2 class="user-id">学员</h2>
+          </template>
+
+          <div class="user-tags">
+            <span class="tag card-tag">体育会员</span>
+            <span class="tag star-tag">专属学员</span>
           </div>
+
+          <p v-if="needsBindPhone" class="bind-hint">
+            已获取微信信息，请先绑定手机号以展示课程
+          </p>
+        </div>
+      </section>
+
+      <section class="courses-section">
+        <div v-if="loadingCourses" class="loading-box">
+          <van-loading type="spinner" size="30px" color="#1989fa" />
+          <span>正在加载课程...</span>
         </div>
 
-        <!-- 足球 -->
-        <div class="resource-item">
-          <div class="resource-title">
-            <div class="dot orange"></div>
-            <span>足球</span>
+        <template v-else>
+          <div v-if="courseError" class="error-box">
+            <van-icon name="warning-o" size="18" />
+            <span>{{ courseError }}</span>
           </div>
 
-          <div class="resource-detail">
-            <div class="resource-row">
-              <div class="resource-name">
-                <span>- 足球基础训练</span>
+          <template v-else-if="hasCourses">
+            <div class="summary-card">
+              <div class="summary-header">
+                <h3>{{ summaryTitle }}</h3>
+                <p>手机号：{{ formattedPhone }}</p>
               </div>
-              <div class="resource-total">总计：20节</div>
-            </div>
-            <div class="resource-row">
-              <div class="resource-name">
-                <span>- 足球战术训练</span>
+              <div class="summary-stats">
+                <div class="stat-item">
+                  <span class="stat-label">课程数量</span>
+                  <span class="stat-value">{{
+                    courseSummary.totalCourses
+                  }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">课消金额</span>
+                  <span class="stat-value">{{
+                    formatCurrency(courseSummary.totalConsumedAmount)
+                  }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">剩余金额</span>
+                  <span class="stat-value">{{
+                    formatCurrency(courseSummary.totalRemainingAmount)
+                  }}</span>
+                </div>
               </div>
-              <div class="resource-total">总计：10节</div>
             </div>
-          </div>
-        </div>
 
-        <!-- 羽毛球 -->
-        <div class="resource-item">
-          <div class="resource-title">
-            <div class="dot red"></div>
-            <span>羽毛球</span>
-          </div>
-
-          <div class="resource-detail">
-            <div class="resource-row">
-              <div class="resource-name">
-                <span>- 羽毛球初级课程</span>
+            <!-- @click="openCourseDetail(course)" -->
+            <div
+              v-for="(course, index) in courses"
+              :key="`${course.course_name || 'course'}-${index}`"
+              class="course-card"
+            >
+              <div class="course-header">
+                <div>
+                  <h4>{{ course.course_name || "未命名课程" }}</h4>
+                  <p v-if="course.class_name" class="course-meta">
+                    班级：{{ course.class_name }}
+                  </p>
+                </div>
+                <van-tag v-if="course.course_type" type="primary">
+                  {{ course.course_type }}
+                </van-tag>
               </div>
-              <div class="resource-total">18/18节</div>
+
+              <div class="course-body">
+                <div class="course-row">
+                  <span>总课时</span>
+                  <span>{{ course.purchase_quantity || "-" }}</span>
+                </div>
+                <div class="course-row">
+                  <span>赠送课时</span>
+                  <span>{{ course.gifted_quantity || "-" }}</span>
+                </div>
+                <div class="course-row">
+                  <span>已消耗课时</span>
+                  <span>{{ course.consumed_quantity || "-" }}</span>
+                </div>
+                <div class="course-row">
+                  <span>剩余课时</span>
+                  <span class="highlight">{{
+                    course.remaining_quantity || "-"
+                  }}</span>
+                </div>
+                <div class="course-row">
+                  <span>退转课时</span>
+                  <span>{{ course.refund_transfer_quantity || "-" }}</span>
+                </div>
+                <div class="course-row">
+                  <span>超上课时</span>
+                  <span>{{ course.over_attend_quantity || "-" }}</span>
+                </div>
+              </div>
+
+              <div class="course-footer">
+                <div>
+                  课消金额：
+                  <strong>{{ formatCurrency(course.consumed_amount) }}</strong>
+                </div>
+                <div>
+                  剩余金额：
+                  <strong>{{ formatCurrency(course.remaining_amount) }}</strong>
+                </div>
+              </div>
+              <div class="course-extra">
+                到期时间：{{ formatDate(course.expire_date) }}
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
+          </template>
+
+          <van-empty v-else description="暂无课程数据" />
+        </template>
+      </section>
     </div>
 
     <div class="footer">
@@ -147,18 +149,22 @@
         <div class="service-icon">客</div>
         <span>在线客服</span>
       </div>
-      <div class="action-tabs">
+      <!-- <div class="action-tabs">
         <div class="action-tab">课程专区</div>
-        <!-- <div class="action-tab special">优惠套餐</div> -->
-      </div>
+      </div> -->
     </div>
 
-    <!-- 授权弹窗 -->
+    <BindPhoneDialog
+      v-model:show="showBindPhone"
+      :openid="userInfo && userInfo.openid ? userInfo.openid : ''"
+      @bind-success="onBindPhone"
+    />
+
     <van-dialog
       :show="showAuthDialog"
-      @update:show="showAuthDialog = $event"
       title="授权提示"
       confirm-button-text="确认授权"
+      @update:show="showAuthDialog = $event"
       @confirm="handleAuthConfirm"
     >
       <p class="auth-tip">
@@ -169,13 +175,12 @@
 </template>
 
 <script>
-import { ref, onMounted } from "vue";
-import BindPhoneDialog from "../components/BindPhoneDialog.vue";
+import { ref, reactive, computed, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { showToast, showLoadingToast, closeToast } from "vant";
-
-
+import BindPhoneDialog from "../components/BindPhoneDialog.vue";
 import wxUtils from "../utils/wxUtils";
+import api from "../api";
 
 export default {
   name: "Home",
@@ -186,18 +191,141 @@ export default {
     const showAuthDialog = ref(false);
     const showBindPhone = ref(false);
 
-    // 跳转到套餐详情页
-    const goToPackageDetail = () => {
-      router.push("/package/1");
+    const courses = ref([]);
+    const courseSummary = reactive({
+      totalCourses: 0,
+      totalConsumedAmount: 0,
+      totalRemainingAmount: 0,
+    });
+    const studentNames = ref([]);
+    const loadingCourses = ref(false);
+    const courseError = ref("");
+    const lastQueriedPhone = ref("");
+
+    const currentPhone = computed(() => {
+      const info = userInfo.value;
+      if (!info) return "";
+      return info.phoneNumber || info.phone || "";
+    });
+
+    const formattedPhone = computed(() => {
+      if (!currentPhone.value) return "未绑定手机号";
+      return formatPhone(currentPhone.value);
+    });
+
+    const summaryTitle = computed(() => {
+      if (studentNames.value.length > 0) {
+        return studentNames.value.join("、");
+      }
+      if (userInfo.value && userInfo.value.nickname) {
+        return userInfo.value.nickname;
+      }
+      return "我的课程";
+    });
+
+    const hasCourses = computed(() => courses.value.length > 0);
+    const needsBindPhone = computed(
+      () => Boolean(userInfo.value) && !currentPhone.value
+    );
+
+    const resetCourses = () => {
+      courses.value = [];
+      courseSummary.totalCourses = 0;
+      courseSummary.totalConsumedAmount = 0;
+      courseSummary.totalRemainingAmount = 0;
+      studentNames.value = [];
     };
 
-    // 格式化手机号，隐藏中间四位
+    const fetchCourses = async (phone) => {
+      if (!phone) return;
+      if (loadingCourses.value) return;
+
+      loadingCourses.value = true;
+      courseError.value = "";
+
+      try {
+        const response = await api.student.getCoursesByPhone(phone);
+        if (response?.code === 0 && response.data) {
+          const data = response.data;
+          courses.value = Array.isArray(data.records) ? data.records : [];
+          courseSummary.totalCourses = Number(
+            data.total_courses ?? courses.value.length ?? 0
+          );
+          courseSummary.totalConsumedAmount = toNumber(
+            data.total_consumed_amount
+          );
+          courseSummary.totalRemainingAmount = toNumber(
+            data.total_remaining_amount
+          );
+          studentNames.value = Array.isArray(data.student_names)
+            ? data.student_names
+            : [];
+          lastQueriedPhone.value = phone;
+        } else {
+          resetCourses();
+          courseError.value =
+            (response && response.message) || "查询课程失败，请稍后再试";
+          lastQueriedPhone.value = "";
+        }
+      } catch (error) {
+        resetCourses();
+        courseError.value =
+          error?.response?.data?.message ||
+          error?.message ||
+          "查询课程失败，请稍后再试";
+        lastQueriedPhone.value = "";
+      } finally {
+        loadingCourses.value = false;
+      }
+    };
+
+    const maybeFetchCourses = () => {
+      const phone = currentPhone.value;
+      if (!phone) {
+        resetCourses();
+        return;
+      }
+      if (lastQueriedPhone.value === phone && courses.value.length > 0) {
+        return;
+      }
+      fetchCourses(phone);
+    };
+
     const formatPhone = (phone) => {
-      if (!phone || phone.length !== 11) return phone;
+      if (!phone || phone.length !== 11) return phone || "";
       return phone.replace(/(\d{3})(\d{4})(\d{4})/, "$1****$3");
     };
 
-    // 统一处理并持久化微信用户信息
+    const toNumber = (value) => {
+      if (value === null || value === undefined || value === "") {
+        return 0;
+      }
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : 0;
+    };
+
+    const formatCurrency = (amount) => {
+      if (amount === null || amount === undefined || amount === "") {
+        return "-";
+      }
+      const numeric = Number(amount);
+      if (Number.isNaN(numeric)) {
+        return "-";
+      }
+      return `¥${numeric.toFixed(2)}`;
+    };
+
+    const formatDate = (date) => {
+      if (!date) return "-";
+      if (date instanceof Date) {
+        return date.toISOString().split("T")[0];
+      }
+      if (typeof date === "string") {
+        return date.split("T")[0];
+      }
+      return String(date);
+    };
+
     const persistUserInfo = (info, { triggerBindPopup = false } = {}) => {
       if (!info) return;
       const normalizedPhone =
@@ -212,13 +340,12 @@ export default {
       if (triggerBindPopup && !normalizedPhone) {
         showBindPhone.value = true;
       }
+      maybeFetchCourses();
     };
 
-    // 检查微信授权并获取用户信息
     const checkWechatAuth = async () => {
       try {
         const code = wxUtils.getAuthCodeFromUrl();
-
         if (code) {
           showLoadingToast({ message: "获取用户信息...", forbidClick: true });
           try {
@@ -229,7 +356,6 @@ export default {
           }
         } else {
           const storedUserInfo = localStorage.getItem("userInfo");
-
           if (storedUserInfo) {
             try {
               const parsed = JSON.parse(storedUserInfo);
@@ -250,111 +376,41 @@ export default {
       }
     };
 
-    // 处理授权确认
     const handleAuthConfirm = () => {
-      // 跳转到微信授权页面
       wxUtils.oauthLogin();
     };
 
-    // 主动触发：拉取微信用户信息
-    const handleGetWxUser = async () => {
-      try {
-        if (userInfo.value && userInfo.value.openid) {
-          if (!userInfo.value.phoneNumber) {
-            showBindPhone.value = true;
-          } else {
-            showToast("已获取用户信息");
-          }
-          return;
-        }
-        const code = wxUtils.getAuthCodeFromUrl();
-        if (!code) {
-          showAuthDialog.value = true;
-          return;
-        }
-        showLoadingToast({ message: "获取用户信息...", forbidClick: true });
-        try {
-          const info = await wxUtils.getUserInfoByCode(code);
-          persistUserInfo(info, { triggerBindPopup: true });
-          showToast("获取成功");
-        } finally {
-          closeToast();
-        }
-      } catch (e) {
-        closeToast();
-        showToast(e.message || "获取失败");
-      }
+    const goToCustomerService = () => {
+      window.location.href =
+        "https://work.weixin.qq.com/kfid/kfc8cb013cc4c466389";
     };
 
-    // 主动触发：获取手机号
-    const handleGetPhone = async () => {
-      try {
-        if (!userInfo.value) {
-          showToast("请先获取微信用户信息");
-          return;
-        }
-        if (!userInfo.value.openid) {
-          showToast("请先完成微信授权");
-          showAuthDialog.value = true;
-          return;
-        }
-        if (userInfo.value.phoneNumber) {
-          showToast("已绑定手机号");
-          return;
-        }
-
-        // 在公众号网页环境，直接显示手机号绑定对话框
-        showBindPhone.value = true;
-      } catch (e) {
-        showToast(e.message || "操作失败");
-      }
-    };
-
-    // 根据手机号查询课程
-    const handleFindCoursesByPhone = () => {
-      if (!userInfo.value || !userInfo.value.phoneNumber) {
-        showToast("请先获取手机号");
-        return;
-      }
-      router.push({
-        path: "/courses",
-        query: { phone: userInfo.value.phoneNumber },
-      });
-    };
-
-    // 初始化微信JS-SDK
     const initWxConfig = async () => {
       try {
-        // 获取当前页面URL
         const url = window.location.href.split("#")[0];
-
-        // 从后端获取微信JS-SDK配置（非微信内将跳过）
         const config = await wxUtils.getJssdkConfig(url);
         if (config && config.skip) {
-          return; // 非微信环境，直接跳过初始化
+          return;
         }
-
-        // 初始化微信JS-SDK
         await wxUtils.initJssdkConfig(config);
       } catch (error) {
         console.error("初始化微信JS-SDK失败", error);
       }
     };
 
-    // 跳转到企业微信客服页面
-    const goToCustomerService = () => {
-      // 跳转到企业微信客服页面
-      window.location.href =
-        "https://work.weixin.qq.com/kfid/kfc8cb013cc4c466389";
+    const openCourseDetail = (course) => {
+      if (!currentPhone.value) {
+        showToast("请先绑定手机号");
+        return;
+      }
+      router.push({
+        path: "/courses",
+        query: {
+          phone: currentPhone.value,
+          course: course && course.course_name ? course.course_name : "",
+        },
+      });
     };
-
-    onMounted(() => {
-      // 页面加载时初始化微信配置
-      initWxConfig();
-
-      // 检查微信授权
-      checkWechatAuth();
-    });
 
     const onBindPhone = ({ phoneNumber, user }) => {
       const merged = {
@@ -368,17 +424,37 @@ export default {
       showToast("手机号绑定成功");
     };
 
+    watch(currentPhone, (phone) => {
+      if (!phone) {
+        resetCourses();
+        return;
+      }
+      maybeFetchCourses();
+    });
+
+    onMounted(() => {
+      initWxConfig();
+      checkWechatAuth();
+    });
+
     return {
       userInfo,
       showAuthDialog,
       showBindPhone,
-      goToPackageDetail,
-      formatPhone,
-      handleAuthConfirm,
-      handleGetWxUser,
-      handleGetPhone,
-      handleFindCoursesByPhone,
+      courses,
+      courseSummary,
+      courseError,
+      loadingCourses,
+      hasCourses,
+      summaryTitle,
+      formattedPhone,
+      currentPhone,
+      needsBindPhone,
+      formatCurrency,
+      formatDate,
       goToCustomerService,
+      handleAuthConfirm,
+      openCourseDetail,
       onBindPhone,
     };
   },
@@ -390,6 +466,7 @@ export default {
   min-height: 100vh;
   background-color: #f0f7ff;
   position: relative;
+  padding-bottom: 60px;
 }
 
 .nav-bar {
@@ -414,8 +491,15 @@ export default {
   margin: 0 5px;
 }
 
+.content {
+  padding: 0 15px 80px;
+}
+
+.user-section {
+  margin-top: 10px;
+}
+
 .user-info {
-  padding: 15px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -446,15 +530,6 @@ export default {
   gap: 10px;
 }
 
-.wx-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.ml-8 { margin-left: 8px; }
-
 .tag {
   padding: 2px 8px;
   border-radius: 12px;
@@ -472,147 +547,145 @@ export default {
   color: #3b82f6;
 }
 
-.package-card {
-  background-color: #3b82f6;
-  border-radius: 10px;
-  padding: 15px;
-  margin: 0 15px 15px;
-  color: white;
+.bind-hint {
+  margin-top: 10px;
+  color: #f97316;
+  font-size: 12px;
 }
 
-.package-header {
-  margin-bottom: 15px;
+.courses-section {
+  margin-top: 20px;
 }
 
-.package-title {
+.loading-box {
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-bottom: 5px;
-}
-
-.package-name {
-  font-size: 18px;
-  font-weight: 500;
-}
-
-.package-price {
-  font-size: 15px;
-  opacity: 0.9;
-}
-
-.package-actions {
-  display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 10px;
+  padding: 20px 0;
+  color: #1989fa;
 }
 
-.action-btn {
-  background: transparent;
-  border: 1px solid white;
-  color: white;
-  padding: 5px 12px;
-  border-radius: 15px;
+.error-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fdecea;
+  color: #d93025;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.summary-card {
+  background: linear-gradient(135deg, #dbeafe, #eff6ff);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 10px 25px rgba(59, 130, 246, 0.1);
+}
+
+.summary-header h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.summary-header p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.summary-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.stat-value {
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.course-card {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  background-color: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  transition: transform 0.15s ease;
+}
+
+.course-card:active {
+  transform: scale(0.99);
+}
+
+.course-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.course-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.course-meta {
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.course-body {
+  margin-top: 12px;
+}
+
+.course-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  color: #4b5563;
   font-size: 14px;
 }
 
-.tab-container {
-  background: white;
-  border-radius: 10px;
-  margin: 0 15px;
-  overflow: hidden;
+.course-row .highlight {
+  color: #1989fa;
+  font-weight: 600;
 }
 
-.tabs {
-  display: flex;
-  border-bottom: 1px solid #eee;
-}
-
-.tab {
-  flex: 1;
-  text-align: center;
-  padding: 12px 0;
-  font-size: 15px;
-}
-
-.tab.active {
-  color: #3b82f6;
-  font-weight: 500;
-  position: relative;
-}
-
-.tab.active::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 40px;
-  height: 3px;
-  background-color: #3b82f6;
-  border-radius: 3px;
-}
-
-.resource-list {
-  padding: 15px;
-}
-
-.resource-item {
-  margin-bottom: 25px;
-}
-
-.resource-title {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 8px;
-}
-
-.blue {
-  background-color: #3b82f6;
-}
-
-.orange {
-  background-color: #f59e0b;
-}
-
-.red {
-  background-color: #ef4444;
-}
-
-.resource-detail {
-  padding-left: 18px;
-}
-
-.resource-subtitle {
-  margin-bottom: 10px;
-  color: #666;
-}
-
-.resource-row {
+.course-footer {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 12px;
-  color: #666;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #1f2937;
 }
 
-.resource-name {
-  flex: 1;
+.course-footer strong {
+  color: #111827;
 }
 
-.resource-total {
-  font-weight: 500;
-  color: #333;
-  min-width: 120px;
-  text-align: right;
+.course-extra {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #6b7280;
 }
 
 .footer {
@@ -621,7 +694,7 @@ export default {
   left: 0;
   right: 0;
   display: flex;
-  background: white;
+  background: #fff;
   border-top: 1px solid #eee;
   height: 60px;
 }
@@ -631,7 +704,7 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 70px;
+  width: 100%;
   border-right: 1px solid #eee;
   font-size: 12px;
   color: #666;
@@ -659,12 +732,8 @@ export default {
   align-items: center;
   justify-content: center;
   background-color: #33b4ff;
-  color: white;
+  color: #fff;
   font-weight: 500;
-}
-
-.action-tab.special {
-  background-color: #1890ff;
 }
 
 .auth-tip {

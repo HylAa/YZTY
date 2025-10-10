@@ -1,7 +1,7 @@
 <template>
   <div class="my-courses-page">
     <van-nav-bar
-      title="我的套餐"
+      title="我的课程"
       left-arrow
       fixed
       @click-left="$router.back()"
@@ -9,136 +9,265 @@
       class="custom-nav"
     >
       <template #right>
-        <van-icon name="question-o" size="20" />
-        <span class="service-number">10086</span>
-        <van-icon name="expand-o" size="20" class="ml-2" />
+        <van-icon name="service-o" size="20" />
       </template>
     </van-nav-bar>
 
     <div class="content">
-      <div class="user-info">
-        <h2>136****3596 梁*</h2>
-        <div class="user-tags">
-          <van-tag plain color="#7e7e7e" class="mr-2">全球通银卡</van-tag>
-          <van-tag plain color="#3b82f6">5星用户</van-tag>
-        </div>
+      <div class="search-card">
+        <van-field
+          v-model="phone"
+          label="手机号"
+          type="tel"
+          maxlength="20"
+          clearable
+          placeholder="请输入手机号查询课程"
+          :disabled="loading"
+        />
+        <van-button
+          type="primary"
+          block
+          round
+          class="search-btn"
+          :loading="loading"
+          @click="handleSearch"
+        >
+          查询课程
+        </van-button>
+        <p class="search-hint">支持学员手机号或备用手机号查询</p>
       </div>
 
-      <div class="package-card">
-        <div class="package-header">
-          <div class="package-title">
-            <span class="package-name">运动套餐 (个人版) 128元</span>
-            <van-icon name="info-o" />
+      <div v-if="errorMessage" class="error-box">
+        <van-icon name="warning-o" size="18" />
+        <span>{{ errorMessage }}</span>
+      </div>
+
+      <div v-if="loading" class="loading-box">
+        <van-loading type="spinner" size="32px" color="#1989fa" />
+        <span>查询中，请稍候...</span>
+      </div>
+
+      <template v-if="!loading && hasData">
+        <div class="summary-card">
+          <div class="summary-header">
+            <h2>{{ studentTitle }}</h2>
+            <p>手机号：{{ maskedPhone }}</p>
           </div>
-          <div class="package-price">(128.00元)</div>
-        </div>
-        <div class="package-actions">
-          <van-button plain size="small" round class="action-btn"
-            >余量查询</van-button
-          >
-          <van-button plain size="small" round class="action-btn"
-            >换套餐</van-button
-          >
-        </div>
-      </div>
-
-      <div class="tab-container">
-        <van-tabs v-model="activeTab" animated swipeable sticky>
-          <van-tab title="套餐资源">
-            <div class="resource-list">
-              <!-- 课时流量 -->
-              <div class="resource-item">
-                <div class="resource-title">
-                  <div class="dot blue"></div>
-                  <span>课时</span>
-                </div>
-
-                <div class="resource-detail">
-                  <div class="resource-name">
-                    <span>- 30节国内通用课时</span>
-                    <span class="resource-total">总计：30节</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 教练通话 -->
-              <div class="resource-item">
-                <div class="resource-title">
-                  <div class="dot orange"></div>
-                  <span>通话</span>
-                </div>
-
-                <div class="resource-detail">
-                  <div class="resource-name">
-                    <span>- 500分钟教练咨询</span>
-                    <span class="resource-total">总计：500分钟</span>
-                  </div>
-                  <div class="resource-name">
-                    <span>- 100分钟国际教练咨询</span>
-                    <span class="resource-total">总计：100分钟</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 额外功能 -->
-              <div class="resource-item">
-                <div class="resource-title">
-                  <div class="dot red"></div>
-                  <span>通信功能</span>
-                </div>
-
-                <div class="resource-detail">
-                  <div class="resource-name">
-                    <span>- 全国健身网络</span>
-                    <span class="resource-total">0/18</span>
-                  </div>
-                </div>
-              </div>
+          <div class="summary-stats">
+            <div class="stat-item">
+              <span class="label">课程数量</span>
+              <span class="value">{{ summary.total_courses }}</span>
             </div>
-          </van-tab>
-          <van-tab title="融合资源">
-            <div class="empty-content">
-              <p>暂无融合资源数据</p>
+            <div class="stat-item">
+              <span class="label">已消耗金额</span>
+              <span class="value">{{ formatCurrency(summary.total_consumed_amount) }}</span>
             </div>
-          </van-tab>
-        </van-tabs>
-      </div>
-    </div>
+            <div class="stat-item">
+              <span class="label">剩余金额</span>
+              <span class="value">{{ formatCurrency(summary.total_remaining_amount) }}</span>
+            </div>
+          </div>
+        </div>
 
-    <div class="footer">
-      <div class="service-btn">
-        <van-icon name="service-o" size="24" />
-        <span>在线客服</span>
-      </div>
-      <div class="action-tabs">
-        <div class="action-tab">套餐专区</div>
-        <div class="action-tab special">5折课时</div>
-      </div>
+        <div
+          v-for="(record, index) in records"
+          :key="`${record.course_name || 'course'}-${index}`"
+          class="course-card"
+        >
+          <div class="course-header">
+            <div>
+              <h3>{{ record.course_name || "未命名课程" }}</h3>
+              <p v-if="record.class_name" class="class-name">
+                班级：{{ record.class_name }}
+              </p>
+            </div>
+            <van-tag v-if="record.course_type" type="primary">
+              {{ record.course_type }}
+            </van-tag>
+          </div>
+
+          <div class="course-body">
+            <div class="course-row">
+              <span>总课时</span>
+              <span>{{ record.purchase_quantity || "-" }}</span>
+            </div>
+            <div class="course-row">
+              <span>赠送课时</span>
+              <span>{{ record.gifted_quantity || "-" }}</span>
+            </div>
+            <div class="course-row">
+              <span>已消耗课时</span>
+              <span>{{ record.consumed_quantity || "-" }}</span>
+            </div>
+            <div class="course-row">
+              <span>剩余课时</span>
+              <span class="highlight">{{ record.remaining_quantity || "-" }}</span>
+            </div>
+            <div class="course-row">
+              <span>退转课时</span>
+              <span>{{ record.refund_transfer_quantity || "-" }}</span>
+            </div>
+            <div class="course-row">
+              <span>超上课时</span>
+              <span>{{ record.over_attend_quantity || "-" }}</span>
+            </div>
+          </div>
+
+          <div class="course-footer">
+            <div>
+              <span>课消金额：</span>
+              <strong>{{ formatCurrency(record.consumed_amount) }}</strong>
+            </div>
+            <div>
+              <span>剩余金额：</span>
+              <strong>{{ formatCurrency(record.remaining_amount) }}</strong>
+            </div>
+          </div>
+
+          <div class="course-extra">
+            <span>到期时间：{{ formatDate(record.expire_date) }}</span>
+          </div>
+        </div>
+      </template>
+
+      <van-empty
+        v-else-if="!loading && searched"
+        description="未查询到相关课程"
+        class="empty-box"
+      />
+
+      <div class="placeholder" />
     </div>
   </div>
 </template>
 
-<script>
-import { ref } from "vue";
+<script setup>
+import { computed, onMounted, reactive, ref } from "vue";
+import { useRoute } from "vue-router";
+import api from "../api";
 
-export default {
-  name: "MyCourses",
-  setup() {
-    const activeTab = ref(0);
+const phone = ref("");
+const loading = ref(false);
+const errorMessage = ref("");
+const searched = ref(false);
+const records = ref([]);
+const studentNames = ref([]);
+const summary = reactive({
+  total_courses: 0,
+  total_consumed_amount: 0,
+  total_remaining_amount: 0,
+});
 
-    return {
-      activeTab,
-    };
-  },
-};
+const route = useRoute();
+
+const hasData = computed(() => records.value.length > 0);
+const maskedPhone = computed(() => maskPhone(phone.value));
+const studentTitle = computed(() => {
+  if (studentNames.value.length === 0) {
+    return "未识别学员";
+  }
+  return studentNames.value.join("、");
+});
+
+onMounted(() => {
+  const queryPhone = route.query?.phone;
+  if (typeof queryPhone === "string" && queryPhone.trim()) {
+    phone.value = queryPhone.trim();
+    handleSearch();
+  }
+});
+
+function resetSummary() {
+  summary.total_courses = 0;
+  summary.total_consumed_amount = 0;
+  summary.total_remaining_amount = 0;
+}
+
+function maskPhone(value) {
+  if (!value) {
+    return "--";
+  }
+  const digits = value.replace(/\\s+/g, "");
+  if (digits.length < 7) {
+    return digits;
+  }
+  return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+}
+
+function formatCurrency(amount) {
+  if (amount === null || amount === undefined) {
+    return "-";
+  }
+  const numeric = Number(amount);
+  if (Number.isNaN(numeric)) {
+    return "-";
+  }
+  return `¥${numeric.toFixed(2)}`;
+}
+
+function formatDate(date) {
+  if (!date) {
+    return "-";
+  }
+  return String(date);
+}
+
+function normalizePhone(value) {
+  return value.replace(/\\s+/g, "");
+}
+
+async function handleSearch() {
+  const normalized = normalizePhone(phone.value);
+  phone.value = normalized;
+
+  if (!normalized) {
+    errorMessage.value = "请输入手机号";
+    records.value = [];
+    studentNames.value = [];
+    resetSummary();
+    searched.value = true;
+    return;
+  }
+
+  loading.value = true;
+  errorMessage.value = "";
+
+  try {
+    const res = await api.student.getCoursesByPhone(normalized);
+    if (res?.code === 0) {
+      const data = res.data || {};
+      records.value = data.records || [];
+      studentNames.value = data.student_names || [];
+      summary.total_courses = data.total_courses || 0;
+      summary.total_consumed_amount = data.total_consumed_amount || 0;
+      summary.total_remaining_amount = data.total_remaining_amount || 0;
+    } else {
+      errorMessage.value = res?.message || "查询失败";
+      records.value = [];
+      studentNames.value = [];
+      resetSummary();
+    }
+  } catch (error) {
+    const msg =
+      error?.response?.data?.message ||
+      error?.message ||
+      "查询失败，请稍后再试";
+    errorMessage.value = msg;
+    records.value = [];
+    studentNames.value = [];
+    resetSummary();
+  } finally {
+    loading.value = false;
+    searched.value = true;
+  }
+}
 </script>
 
 <style scoped>
 .my-courses-page {
   background-color: #f5f7fa;
   min-height: 100vh;
-  padding-top: 46px;
-  padding-bottom: 60px;
+  padding-top: 54px;
 }
 
 .custom-nav {
@@ -151,180 +280,158 @@ export default {
   font-size: 18px;
 }
 
-.service-number {
-  margin: 0 8px;
-  font-size: 15px;
-  font-weight: 500;
-}
-
 .content {
-  padding: 15px;
+  padding: 70px 16px 32px;
 }
 
-.user-info {
-  margin-bottom: 15px;
+.search-card {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 25px rgba(59, 130, 246, 0.1);
 }
 
-.user-info h2 {
-  font-size: 20px;
-  margin: 0 0 10px 0;
-  font-weight: 500;
+.search-btn {
+  margin-top: 12px;
 }
 
-.user-tags {
-  display: flex;
+.search-hint {
+  margin: 8px 0 0;
+  color: #666;
+  font-size: 12px;
 }
 
-.package-card {
-  background-color: #3b82f6;
-  border-radius: 10px;
-  padding: 15px;
-  color: #fff;
-  margin-bottom: 15px;
-}
-
-.package-header {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 15px;
-}
-
-.package-title {
+.error-box {
   display: flex;
   align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fdecea;
+  color: #d93025;
+  font-size: 13px;
 }
 
-.package-name {
-  font-size: 18px;
-  font-weight: 500;
-  margin-right: 5px;
-}
-
-.package-price {
-  font-size: 15px;
-  opacity: 0.9;
-}
-
-.package-actions {
+.loading-box {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 10px;
+  margin-top: 20px;
+  color: #1989fa;
 }
 
-.action-btn {
-  color: #fff !important;
-  border-color: #fff !important;
+.summary-card {
+  margin-top: 20px;
+  padding: 18px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #dbeafe, #eff6ff);
 }
 
-.tab-container {
-  background: #fff;
-  border-radius: 10px;
-  overflow: hidden;
+.summary-header h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
 }
 
-:deep(.van-tabs__wrap) {
-  padding: 0 10px;
+.summary-header p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 13px;
 }
 
-:deep(.van-tabs__line) {
-  background-color: #3b82f6;
-}
-
-.resource-list {
-  padding: 15px;
-}
-
-.resource-item {
-  margin-bottom: 25px;
-}
-
-.resource-title {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 8px;
-}
-
-.blue {
-  background-color: #3b82f6;
-}
-
-.orange {
-  background-color: #f59e0b;
-}
-
-.red {
-  background-color: #ef4444;
-}
-
-.resource-detail {
-  padding-left: 18px;
-}
-
-.resource-name {
+.summary-stats {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 15px;
-  color: #666;
+  margin-top: 16px;
 }
 
-.resource-total {
-  font-weight: 500;
-  color: #333;
-}
-
-.empty-content {
-  padding: 30px 0;
-  text-align: center;
-  color: #999;
-}
-
-.footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  background: #fff;
-  border-top: 1px solid #eee;
-  height: 60px;
-}
-
-.service-btn {
+.stat-item {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 70px;
-  border-right: 1px solid #eee;
+  align-items: flex-start;
+}
+
+.stat-item .label {
+  color: #4b5563;
   font-size: 12px;
-  color: #666;
 }
 
-.action-tabs {
-  display: flex;
-  flex: 1;
+.stat-item .value {
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1d4ed8;
 }
 
-.action-tab {
-  flex: 1;
+.course-card {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 12px;
+  background-color: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.course-header {
   display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.course-header h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.class-name {
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.course-body {
+  margin-top: 16px;
+}
+
+.course-row {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  background-color: #33b4ff;
-  color: #fff;
-  font-weight: 500;
+  margin-bottom: 10px;
+  color: #4b5563;
+  font-size: 14px;
 }
 
-.action-tab.special {
-  background-color: #1890ff;
+.course-row .highlight {
+  color: #1989fa;
+  font-weight: 600;
+}
+
+.course-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+  font-size: 14px;
+  color: #111827;
+}
+
+.course-footer strong {
+  color: #1f2937;
+}
+
+.course-extra {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.empty-box {
+  margin-top: 40px;
+}
+
+.placeholder {
+  height: 60px;
 }
 </style>

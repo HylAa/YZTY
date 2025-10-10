@@ -1,7 +1,7 @@
 use axum::{http::StatusCode, response::IntoResponse, routing::{get, post, put}, Json, Router};
 use axum::http::Method;
 use http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::cors::{Any, CorsLayer};
 
@@ -19,7 +19,7 @@ pub struct AppState {
 }
 
 #[derive(Serialize)]
-struct ApiResponse<T> {
+pub struct ApiResponse<T> {
     code: i32,
     message: String,
     data: Option<T>,
@@ -36,9 +36,7 @@ impl<T> ApiResponse<T> {
     fn ok(data: T) -> Self {
         Self { code: 0, message: "ok".into(), data: Some(data), pagination: None, total: None }
     }
-}
 
-impl ApiResponse<()> {
     fn msg(code: i32, msg: &str) -> Self {
         Self { code, message: msg.into(), data: None, pagination: None, total: None }
     }
@@ -110,6 +108,11 @@ async fn main() {
             "/wechat/decryptPhoneNumber",
             post(handlers::api_wechat_decrypt_phone),
         )
+        // 学员课程相关
+        .route(
+            "/api/student/courses",
+            get(handlers::api_student_courses_by_phone),
+        )
         // 管理端路由（最小占位）
         .route("/admin/dashboard", get(api_admin_dashboard))
         .route("/admin/users", get(api_admin_users))
@@ -154,8 +157,8 @@ async fn api_admin_users() -> impl IntoResponse {
     (StatusCode::OK, Json(ApiResponse { code: 0, message: "ok".into(), data: Some(list), pagination: Some(Pagination { page: 1, limit: 10, pages: 1 }), total: Some(1) }))
 }
 
-async fn api_admin_update_user() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::msg(0, "updated"))) }
-async fn api_admin_delete_user() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::msg(0, "deleted"))) }
+async fn api_admin_update_user() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "updated"))) }
+async fn api_admin_delete_user() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "deleted"))) }
 
 async fn api_admin_courses() -> impl IntoResponse {
     #[derive(Serialize)]
@@ -164,6 +167,6 @@ async fn api_admin_courses() -> impl IntoResponse {
     (StatusCode::OK, Json(ApiResponse { code: 0, message: "ok".into(), data: Some(list), pagination: Some(Pagination { page: 1, limit: 10, pages: 1 }), total: Some(1) }))
 }
 
-async fn api_admin_create_course() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::msg(0, "created"))) }
-async fn api_admin_update_course() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::msg(0, "updated"))) }
-async fn api_admin_delete_course() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::msg(0, "deleted"))) }
+async fn api_admin_create_course() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "created"))) }
+async fn api_admin_update_course() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "updated"))) }
+async fn api_admin_delete_course() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "deleted"))) }
