@@ -2,7 +2,10 @@ use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{MySql, Pool};
 use std::time::Duration;
 
+pub mod admin;
 pub mod student_course;
+pub mod swim_course;
+pub mod venue;
 pub mod wechat_user;
 
 pub type DbPool = Pool<MySql>;

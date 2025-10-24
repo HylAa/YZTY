@@ -45,10 +45,14 @@ apiClient.interceptors.response.use(
       // Clear local storage
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+      localStorage.removeItem("adminUser");
 
-      // Redirect to login page if not already there
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
+      const currentPath = window.location.pathname || "";
+      const isAdmin = currentPath.startsWith("/admin");
+      const targetPath = isAdmin ? "/admin/login" : "/login";
+
+      if (currentPath !== targetPath) {
+        window.location.href = targetPath;
       }
     }
     return Promise.reject(error);
@@ -96,6 +100,24 @@ export default {
   student: {
     getCoursesByPhone: (phone) =>
       apiClient.get("/student/courses", { params: { phone } }),
+  },
+
+  // 游泳课程接口
+  swim: {
+    getCoursesByPhone: (phone) =>
+      apiClient.get("/swim/courses", { params: { phone } }),
+  },
+
+  // 场馆占用
+  venue: {
+    getOverview: (date) =>
+      apiClient.get("/venues/overview", {
+        params: date ? { date } : undefined,
+      }),
+  },
+
+  adminVenue: {
+    updateStatus: (payload) => apiClient.post("/admin/venues/status", payload),
   },
 
   // WeChat endpoints

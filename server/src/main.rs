@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, response::IntoResponse, routing::{get, post, put}, Json, Router};
+use axum::{routing::{get, post}, Router};
 use axum::http::Method;
 use http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::Serialize;
@@ -9,7 +9,26 @@ mod db;
 mod handlers;
 mod wechat;
 
-use db::{init_pool, DatabaseConfig, DbPool};
+use db::{
+    admin::{self, NewAdminUser},
+    init_pool,
+    venue,
+    DatabaseConfig,
+    DbPool,
+};
+use handlers::{
+    api_admin_login,
+    api_admin_update_venue_status,
+    api_auth_me,
+    api_get_venue_overview,
+    api_student_courses_by_phone,
+    api_swim_courses_by_phone,
+    api_wechat_bind_phone,
+    api_wechat_decrypt_phone,
+    api_wechat_jssdk,
+    api_wechat_userinfo,
+    hash_password,
+};
 use wechat::{WechatClient, WechatConfig};
 
 #[derive(Clone)]
@@ -79,6 +98,19 @@ async fn main() {
         }
     };
 
+    if let Err(err) = admin::ensure_admin_tables(&db_pool).await {
+        eprintln!("初始化管理员表失败: {}", err);
+        std::process::exit(1);
+    }
+    if let Err(err) = venue::ensure_venue_tables(&db_pool).await {
+        eprintln!("初始化场地状态表失败: {}", err);
+        std::process::exit(1);
+    }
+    if let Err(err) = ensure_default_admin(&db_pool).await {
+        eprintln!("创建默认管理员失败: {}", err);
+        std::process::exit(1);
+    }
+
     let state = Arc::new(AppState {
         wechat_client,
         db_pool: db_pool.clone(),
@@ -101,24 +133,31 @@ async fn main() {
         // 健康检查
         .route("/health", get(|| async { "ok" }))
         // 微信相关路由（与前端 wxUtils 对齐）
-        .route("/wechat/jssdkConfig", post(handlers::api_wechat_jssdk))
-        .route("/wechat/getUserInfo", post(handlers::api_wechat_userinfo))
-        .route("/wechat/bindPhone", post(handlers::api_wechat_bind_phone))
+        .route("/wechat/jssdkConfig", post(api_wechat_jssdk))
+        .route("/wechat/getUserInfo", post(api_wechat_userinfo))
+        .route("/wechat/bindPhone", post(api_wechat_bind_phone))
         .route(
             "/wechat/decryptPhoneNumber",
-            post(handlers::api_wechat_decrypt_phone),
+            post(api_wechat_decrypt_phone),
         )
         // 学员课程相关
         .route(
             "/api/student/courses",
-            get(handlers::api_student_courses_by_phone),
+            get(api_student_courses_by_phone),
         )
-        // 管理端路由（最小占位）
-        .route("/admin/dashboard", get(api_admin_dashboard))
-        .route("/admin/users", get(api_admin_users))
-        .route("/admin/users/:id", put(api_admin_update_user).delete(api_admin_delete_user))
-        .route("/admin/courses", get(api_admin_courses).post(api_admin_create_course))
-        .route("/admin/courses/:id", put(api_admin_update_course).delete(api_admin_delete_course))
+        .route(
+            "/api/swim/courses",
+            get(api_swim_courses_by_phone),
+        )
+        // 管理员认证
+        .route("/api/auth/login", post(api_admin_login))
+        .route("/api/auth/me", get(api_auth_me))
+        // 场地占用
+        .route("/api/venues/overview", get(api_get_venue_overview))
+        .route(
+            "/api/admin/venues/status",
+            post(api_admin_update_venue_status),
+        )
         .with_state(state)
         .layer(cors);
 
@@ -143,30 +182,41 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
+async fn ensure_default_admin(pool: &DbPool) -> Result<(), String> {
+    let count = admin::count_admin_users(pool)
+        .await
+        .map_err(|err| err.to_string())?;
+    if count > 0 {
+        return Ok(());
+    }
 
-async fn api_admin_dashboard() -> impl IntoResponse {
-    #[derive(Serialize)]
-    struct Stats { users: u64, courses: u64, revenue: f64 }
-    (StatusCode::OK, Json(ApiResponse::ok(Stats { users: 1200, courses: 86, revenue: 128000.0 })))
+    let username = std::env::var("ADMIN_DEFAULT_USERNAME").unwrap_or_else(|_| {
+        eprintln!("警告: 未设置 ADMIN_DEFAULT_USERNAME，使用默认账号 admin");
+        "admin".to_string()
+    });
+    let password = std::env::var("ADMIN_DEFAULT_PASSWORD").unwrap_or_else(|_| {
+        eprintln!("警告: 未设置 ADMIN_DEFAULT_PASSWORD，使用默认密码 admin123。请尽快在环境变量中修改。");
+        "admin123".to_string()
+    });
+
+    let password_hash = hash_password(&password).map_err(|err| err.to_string())?;
+
+    admin::insert_admin_user(
+        pool,
+        &NewAdminUser {
+            username: &username,
+            password_hash: &password_hash,
+            display_name: Some("系统管理员"),
+            role: "admin",
+        },
+    )
+    .await
+    .map_err(|err| err.to_string())?;
+
+    println!(
+        "默认管理员已创建，账号: {} / 密码: {} (请尽快修改密码)",
+        username, password
+    );
+
+    Ok(())
 }
-
-async fn api_admin_users() -> impl IntoResponse {
-    #[derive(Serialize)]
-    struct User { _id: String, name: String, phone: String, memberLevel: String, role: String, createdAt: String }
-    let list = vec![User { _id: "u1".into(), name: "张三".into(), phone: "13800138000".into(), memberLevel: "普通会员".into(), role: "user".into(), createdAt: "2025-01-01".into() }];
-    (StatusCode::OK, Json(ApiResponse { code: 0, message: "ok".into(), data: Some(list), pagination: Some(Pagination { page: 1, limit: 10, pages: 1 }), total: Some(1) }))
-}
-
-async fn api_admin_update_user() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "updated"))) }
-async fn api_admin_delete_user() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "deleted"))) }
-
-async fn api_admin_courses() -> impl IntoResponse {
-    #[derive(Serialize)]
-    struct Course { _id: String, name: String, price: f64, description: String, image: String, isFeatured: bool, r#type: String, duration: u32, totalSessions: u32 }
-    let list = vec![Course {_id:"c1".into(), name:"篮球基础".into(), price:199.0, description:"入门训练".into(), image:"https://img.yzcdn.cn/vant/cat.jpeg".into(), isFeatured:true, r#type:"篮球".into(), duration:60, totalSessions:10 }];
-    (StatusCode::OK, Json(ApiResponse { code: 0, message: "ok".into(), data: Some(list), pagination: Some(Pagination { page: 1, limit: 10, pages: 1 }), total: Some(1) }))
-}
-
-async fn api_admin_create_course() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "created"))) }
-async fn api_admin_update_course() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "updated"))) }
-async fn api_admin_delete_course() -> impl IntoResponse { (StatusCode::OK, Json(ApiResponse::<()>::msg(0, "deleted"))) }

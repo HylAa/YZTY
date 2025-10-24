@@ -3,10 +3,10 @@
     <div class="nav-bar">
       <div class="nav-left" />
       <div class="nav-title">我的课程套餐</div>
-      <div class="nav-right">
+      <!-- <div class="nav-right">
         <van-icon name="question-o" size="20" @click="goToCustomerService" />
         <span class="service-number" @click="goToCustomerService">客服</span>
-      </div>
+      </div> -->
     </div>
 
     <div class="content">
@@ -37,7 +37,7 @@
       </section>
 
       <section class="courses-section">
-        <div v-if="loadingCourses" class="loading-box">
+        <div v-if="loadingCourses || loadingSwimCourses" class="loading-box">
           <van-loading type="spinner" size="30px" color="#1989fa" />
           <span>正在加载课程...</span>
         </div>
@@ -48,7 +48,7 @@
             <span>{{ courseError }}</span>
           </div>
 
-          <template v-else-if="hasCourses">
+          <template v-if="hasCourses">
             <div class="summary-card">
               <div class="summary-header">
                 <h3>{{ summaryTitle }}</h3>
@@ -139,7 +139,104 @@
             </div>
           </template>
 
-          <van-empty v-else description="暂无课程数据" />
+          <div v-if="swimCourseError" class="error-box">
+            <van-icon name="warning-o" size="18" />
+            <span>{{ swimCourseError }}</span>
+          </div>
+
+          <template v-if="hasSwimCourses">
+            <div class="summary-card swim-summary-card">
+              <div class="summary-header">
+                <h3>游泳课程</h3>
+                <p>共 {{ swimSummary.totalRecords }} 条记录</p>
+              </div>
+              <div class="summary-stats">
+                <div class="stat-item">
+                  <span class="stat-label">剩余私教</span>
+                  <span class="stat-value">{{
+                    swimSummary.totalRemainingPrivateSessions
+                  }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">消费金额</span>
+                  <span class="stat-value">{{
+                    formatCurrency(swimSummary.totalSpentAmount)
+                  }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">入场次数</span>
+                  <span class="stat-value">{{
+                    swimSummary.totalCheckins
+                  }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- @click="openCourseDetail(item)" -->
+            <div
+              v-for="(item, index) in swimCourses"
+              :key="`${item.store_name || 'swim'}-${index}`"
+              class="course-card swim-course-card"
+            >
+              <div class="course-header">
+                <div>
+                  <h4>{{ item.store_name || "游泳门店" }}</h4>
+                  <p class="course-meta">
+                    {{ item.customer_name }} ·
+                    {{ item.purchased_card_type || "卡种未知" }}
+                  </p>
+                </div>
+                <van-tag v-if="item.sales_follow_status" type="success">
+                  {{ item.sales_follow_status }}
+                </van-tag>
+              </div>
+
+              <div class="course-body">
+                <div class="course-row">
+                  <span>入会时间</span>
+                  <span>{{ formatDate(item.membership_start_date) }}</span>
+                </div>
+                <div class="course-row">
+                  <span>卡截止时间</span>
+                  <span>{{ formatDate(item.membership_end_date) }}</span>
+                </div>
+                <div class="course-row">
+                  <span>剩余私教节数</span>
+                  <span class="highlight">{{
+                    item.remaining_private_sessions ?? "-"
+                  }}</span>
+                </div>
+                <div class="course-row">
+                  <span>教练跟进状态</span>
+                  <span>{{ item.coach_follow_status || "-" }}</span>
+                </div>
+                <div class="course-row">
+                  <span>上次入场</span>
+                  <span>{{ formatDate(item.last_checkin_time) }}</span>
+                </div>
+                <div class="course-row">
+                  <span>入场次数</span>
+                  <span>{{ item.total_checkins ?? 0 }}</span>
+                </div>
+                <div class="course-row">
+                  <span>总消费</span>
+                  <span>{{ formatCurrency(item.total_spent_amount) }}</span>
+                </div>
+              </div>
+
+              <div class="course-extra">
+                销售跟进：{{ item.sales_follow_staff || "未分配" }} · 教练：
+                {{ item.coach_follow_staff || "未分配" }}
+              </div>
+            </div>
+          </template>
+
+          <van-empty
+            v-if="
+              !hasCourses && !hasSwimCourses && !courseError && !swimCourseError
+            "
+            description="暂无课程数据"
+          />
         </template>
       </section>
     </div>
@@ -179,8 +276,8 @@ import { ref, reactive, computed, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { showToast, showLoadingToast, closeToast } from "vant";
 import BindPhoneDialog from "../components/BindPhoneDialog.vue";
-import wxUtils from "../utils/wxUtils";
 import api from "../api";
+import wxUtils from "../utils/wxUtils";
 
 export default {
   name: "Home",
@@ -200,7 +297,16 @@ export default {
     const studentNames = ref([]);
     const loadingCourses = ref(false);
     const courseError = ref("");
-    const lastQueriedPhone = ref("");
+
+    const swimCourses = ref([]);
+    const swimSummary = reactive({
+      totalRecords: 0,
+      totalRemainingPrivateSessions: 0,
+      totalSpentAmount: 0,
+      totalCheckins: 0,
+    });
+    const loadingSwimCourses = ref(false);
+    const swimCourseError = ref("");
 
     const currentPhone = computed(() => {
       const info = userInfo.value;
@@ -224,6 +330,7 @@ export default {
     });
 
     const hasCourses = computed(() => courses.value.length > 0);
+    const hasSwimCourses = computed(() => swimCourses.value.length > 0);
     const needsBindPhone = computed(
       () => Boolean(userInfo.value) && !currentPhone.value
     );
@@ -234,6 +341,13 @@ export default {
       courseSummary.totalConsumedAmount = 0;
       courseSummary.totalRemainingAmount = 0;
       studentNames.value = [];
+    };
+
+    const resetSwimCourses = () => {
+      swimCourses.value = [];
+      swimSummary.totalRecords = 0;
+      swimSummary.totalRemainingPrivateSessions = 0;
+      swimSummary.totalSpentAmount = 0;
     };
 
     const fetchCourses = async (phone) => {
@@ -260,12 +374,10 @@ export default {
           studentNames.value = Array.isArray(data.student_names)
             ? data.student_names
             : [];
-          lastQueriedPhone.value = phone;
         } else {
           resetCourses();
           courseError.value =
             (response && response.message) || "查询课程失败，请稍后再试";
-          lastQueriedPhone.value = "";
         }
       } catch (error) {
         resetCourses();
@@ -273,9 +385,42 @@ export default {
           error?.response?.data?.message ||
           error?.message ||
           "查询课程失败，请稍后再试";
-        lastQueriedPhone.value = "";
       } finally {
         loadingCourses.value = false;
+      }
+    };
+
+    const fetchSwimCourses = async (phone) => {
+      if (!phone) return;
+      if (loadingSwimCourses.value) return;
+
+      loadingSwimCourses.value = true;
+      swimCourseError.value = "";
+
+      try {
+        const response = await api.swim.getCoursesByPhone(phone);
+        if (response?.code === 0 && response.data) {
+          const data = response.data;
+          swimCourses.value = Array.isArray(data.records) ? data.records : [];
+          swimSummary.totalRecords = Number(data.total_records ?? 0);
+          swimSummary.totalRemainingPrivateSessions = Number(
+            data.total_remaining_private_sessions ?? 0
+          );
+          swimSummary.totalSpentAmount = toNumber(data.total_spent_amount);
+          swimSummary.totalCheckins = Number(data.total_checkins ?? 0);
+        } else {
+          resetSwimCourses();
+          swimCourseError.value =
+            (response && response.message) || "查询游泳课程失败，请稍后再试";
+        }
+      } catch (error) {
+        resetSwimCourses();
+        swimCourseError.value =
+          error?.response?.data?.message ||
+          error?.message ||
+          "查询游泳课程失败，请稍后再试";
+      } finally {
+        loadingSwimCourses.value = false;
       }
     };
 
@@ -283,12 +428,11 @@ export default {
       const phone = currentPhone.value;
       if (!phone) {
         resetCourses();
-        return;
-      }
-      if (lastQueriedPhone.value === phone && courses.value.length > 0) {
+        resetSwimCourses();
         return;
       }
       fetchCourses(phone);
+      fetchSwimCourses(phone);
     };
 
     const formatPhone = (phone) => {
@@ -446,6 +590,11 @@ export default {
       courseError,
       loadingCourses,
       hasCourses,
+      swimCourses,
+      swimSummary,
+      swimCourseError,
+      loadingSwimCourses,
+      hasSwimCourses,
       summaryTitle,
       formattedPhone,
       currentPhone,
@@ -470,6 +619,7 @@ export default {
 }
 
 .nav-bar {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -477,13 +627,24 @@ export default {
 }
 
 .nav-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   font-size: 18px;
   font-weight: bold;
+  text-align: center;
+}
+
+.nav-left,
+.nav-right {
+  min-width: 90px;
+  display: flex;
+  align-items: center;
 }
 
 .nav-right {
-  display: flex;
-  align-items: center;
+  justify-content: flex-end;
   gap: 5px;
 }
 
@@ -585,6 +746,10 @@ export default {
   box-shadow: 0 10px 25px rgba(59, 130, 246, 0.1);
 }
 
+.swim-summary-card {
+  margin-top: 20px;
+}
+
 .summary-header h3 {
   margin: 0 0 6px;
   font-size: 18px;
@@ -626,6 +791,10 @@ export default {
   background-color: #fff;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
   transition: transform 0.15s ease;
+}
+
+.swim-course-card {
+  border-top: 4px solid #0ea5e9;
 }
 
 .course-card:active {
