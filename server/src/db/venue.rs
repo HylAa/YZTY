@@ -40,12 +40,38 @@ pub struct TimeSlotStatusRecord {
 }
 
 #[derive(Debug, Clone)]
-pub struct TimeSlotStatusInput<'a> {
-    pub slot_key: &'a str,
-    pub start_time: &'a str,
-    pub end_time: &'a str,
+pub struct TimeSlotStatusInput {
+    pub slot_key: String,
+    pub start_time: String,
+    pub end_time: String,
     pub is_available: bool,
-    pub note: Option<&'a str>,
+    pub note: Option<String>,
+    pub updated_by: Option<u64>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct CourtTimeSlotRecord {
+    pub id: u64,
+    pub venue_type: String,
+    pub court_number: i32,
+    pub start_time: String,
+    pub end_time: String,
+    pub target_date: NaiveDate,
+    pub is_available: i8,
+    pub note: Option<String>,
+    pub updated_by: Option<u64>,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct CourtTimeSlotInput {
+    pub venue_type: String,
+    pub court_number: i32,
+    pub start_time: String,
+    pub end_time: String,
+    pub target_date: NaiveDate,
+    pub is_available: bool,
+    pub note: Option<String>,
     pub updated_by: Option<u64>,
 }
 
@@ -72,7 +98,7 @@ pub async fn ensure_venue_tables(pool: &DbPool) -> Result<(), sqlx::Error> {
         r#"
         CREATE TABLE IF NOT EXISTS venue_time_slot_statuses (
             id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            slot_key VARCHAR(32) NOT NULL,
+            slot_key VARCHAR(64) NOT NULL,
             start_time CHAR(5) NOT NULL,
             end_time CHAR(5) NOT NULL,
             target_date DATE NOT NULL,
@@ -81,6 +107,26 @@ pub async fn ensure_venue_tables(pool: &DbPool) -> Result<(), sqlx::Error> {
             updated_by BIGINT UNSIGNED NULL,
             updated_at DATETIME NOT NULL,
             UNIQUE KEY uniq_slot_date (slot_key, target_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS venue_court_time_slots (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            venue_type VARCHAR(32) NOT NULL,
+            court_number INT NOT NULL,
+            start_time CHAR(5) NOT NULL,
+            end_time CHAR(5) NOT NULL,
+            target_date DATE NOT NULL,
+            is_available TINYINT(1) NOT NULL DEFAULT 1,
+            note VARCHAR(255) NULL,
+            updated_by BIGINT UNSIGNED NULL,
+            updated_at DATETIME NOT NULL,
+            UNIQUE KEY uniq_court_slot (venue_type, court_number, start_time, end_time, target_date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         "#,
     )
@@ -126,6 +172,27 @@ pub async fn fetch_time_slot_status_map(
         .collect())
 }
 
+pub async fn fetch_court_time_slot_map(
+    pool: &DbPool,
+    target_date: NaiveDate,
+) -> Result<HashMap<(String, i32), Vec<CourtTimeSlotRecord>>, sqlx::Error> {
+    let records = sqlx::query_as::<_, CourtTimeSlotRecord>(
+        "SELECT id, venue_type, court_number, start_time, end_time, target_date, is_available, note, updated_by, updated_at
+         FROM venue_court_time_slots WHERE target_date = ?",
+    )
+    .bind(target_date)
+    .fetch_all(pool)
+    .await?;
+
+    let mut map: HashMap<(String, i32), Vec<CourtTimeSlotRecord>> = HashMap::new();
+    for record in records {
+        map.entry((record.venue_type.clone(), record.court_number))
+            .or_default()
+            .push(record);
+    }
+    Ok(map)
+}
+
 pub async fn upsert_court_statuses(
     pool: &DbPool,
     target_date: NaiveDate,
@@ -154,7 +221,7 @@ pub async fn upsert_court_statuses(
 pub async fn upsert_time_slot_statuses(
     pool: &DbPool,
     target_date: NaiveDate,
-    payloads: &[TimeSlotStatusInput<'_>],
+    payloads: &[TimeSlotStatusInput],
 ) -> Result<(), sqlx::Error> {
     let now = chrono::Utc::now().naive_utc();
     for payload in payloads {
@@ -163,12 +230,38 @@ pub async fn upsert_time_slot_statuses(
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE is_available = VALUES(is_available), note = VALUES(note), updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)",
         )
-        .bind(payload.slot_key)
-        .bind(payload.start_time)
-        .bind(payload.end_time)
+        .bind(&payload.slot_key)
+        .bind(&payload.start_time)
+        .bind(&payload.end_time)
         .bind(target_date)
         .bind(if payload.is_available { 1 } else { 0 })
-        .bind(payload.note)
+        .bind(payload.note.as_deref())
+        .bind(payload.updated_by)
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn upsert_court_time_slots(
+    pool: &DbPool,
+    payloads: &[CourtTimeSlotInput],
+) -> Result<(), sqlx::Error> {
+    let now = chrono::Utc::now().naive_utc();
+    for payload in payloads {
+        sqlx::query(
+            "INSERT INTO venue_court_time_slots (venue_type, court_number, start_time, end_time, target_date, is_available, note, updated_by, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE is_available = VALUES(is_available), note = VALUES(note), updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)",
+        )
+        .bind(&payload.venue_type)
+        .bind(payload.court_number)
+        .bind(&payload.start_time)
+        .bind(&payload.end_time)
+        .bind(payload.target_date)
+        .bind(if payload.is_available { 1 } else { 0 })
+        .bind(payload.note.as_deref())
         .bind(payload.updated_by)
         .bind(now)
         .execute(pool)

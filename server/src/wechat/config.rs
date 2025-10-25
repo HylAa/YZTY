@@ -9,8 +9,8 @@ pub struct WechatConfig {
 
 impl WechatConfig {
     pub fn from_env() -> Result<Self, String> {
-        let app_id = std::env::var("WECHAT_APPID")
-            .map_err(|_| "WECHAT_APPID not set in environment")?;
+        let app_id =
+            std::env::var("WECHAT_APPID").map_err(|_| "WECHAT_APPID not set in environment")?;
 
         let app_secret = std::env::var("WECHAT_APPSECRET")
             .map_err(|_| "WECHAT_APPSECRET not set in environment")?;
@@ -19,10 +19,7 @@ impl WechatConfig {
             return Err("WeChat credentials cannot be empty".to_string());
         }
 
-        Ok(Self {
-            app_id,
-            app_secret,
-        })
+        Ok(Self { app_id, app_secret })
     }
 
     pub fn validate(&self) -> Result<(), String> {

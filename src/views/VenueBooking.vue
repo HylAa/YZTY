@@ -1,188 +1,597 @@
 <template>
-  <div class="venue-booking-page">
-    <div class="header">
-      <h1>场馆占用情况</h1>
-      <p>查看各类场地与时段的实时可用状态</p>
+  <div class="venue-query-page">
+    <header class="page-header">
+      <h1>场馆查询系统</h1>
+      <p>查询场地可用状态</p>
+    </header>
+
+    <div class="sport-tabs">
+      <button
+        v-for="sport in sportList"
+        :key="sport.id"
+        type="button"
+        class="sport-tab"
+        :class="{ active: sport.id === activeSport }"
+        @click="changeSport(sport.id)"
+      >
+        {{ sport.label }}
+      </button>
     </div>
 
-    <div class="date-selector">
-      <button class="date-btn" @click="notifyDateChange('prev')">
+    <section class="date-selector">
+      <button type="button" class="date-btn" @click="changeDate(-1)">
         ← 前一天
       </button>
-      <div class="current-date">
-        {{ formattedCurrentDate }}
-      </div>
-      <button class="date-btn" @click="notifyDateChange('next')">
+      <div class="current-date">{{ formattedCurrentDate }}</div>
+      <button type="button" class="date-btn" @click="changeDate(1)">
         后一天 →
       </button>
-    </div>
+    </section>
 
-    <div class="content-area">
-      <div v-if="loading" class="loading-state">正在加载场地状态...</div>
-      <div v-else>
-        <div v-if="error" class="info-bar error">
-          {{ error }}
-        </div>
-        <template v-else>
-          <div v-if="!categories.length" class="info-bar empty">
-            暂无场地占用数据
-          </div>
-          <section
-            v-for="category in categories"
-            :key="category.type"
-            class="category"
-          >
-            <div class="category-title">
-              {{ category.displayTitle }}
-            </div>
-            <div :id="category.containerId" class="courts-container">
-              <div
-                v-for="court in category.courts"
-                :key="court.id"
-                class="court-card"
-                :class="[
-                  `${category.type}-court`,
-                  { booked: !court.available },
-                ]"
-              >
-                <div class="court-number-badge">
-                  <span class="badge-text">场地 {{ court.number }}</span>
-                </div>
-                <div class="court-name">
-                  {{ category.courtLabel }}
-                </div>
-                <div
-                  class="status"
-                  :class="court.available ? 'available' : 'booked'"
-                >
-                  {{ court.available ? "未占用" : "已占用" }}
-                </div>
-                <div v-if="court.note" class="court-note">
-                  备注：{{ court.note }}
-                </div>
-                <div v-else-if="court.updatedAt" class="court-note">
-                  更新于 {{ court.updatedAt }}
-                </div>
-              </div>
-            </div>
-          </section>
+    <section class="rules-card">
+      <strong>预约规则：</strong>
+      <ul>
+        <li v-for="rule in activeRules" :key="rule">{{ rule }}</li>
+      </ul>
+    </section>
 
-          <!-- <div v-if="timeSlots.length" class="time-slots">
-            <div class="time-title">时段占用情况</div>
-            <div class="slots-container">
-              <div
-                v-for="slot in timeSlots"
-                :key="slot.key"
-                class="time-slot"
-                :class="{ booked: !slot.available }"
-              >
-                <span class="slot-time">{{ slot.label }}</span>
-                <span class="slot-status">{{ slot.available ? "可用" : "占用" }}</span>
-                <span v-if="slot.note" class="slot-note">{{ slot.note }}</span>
-                <span v-else-if="slot.updatedAt" class="slot-note"
-                  >更新时间 {{ slot.updatedAt }}</span
-                >
-              </div>
-            </div>
-          </div> -->
-        </template>
+    <section class="time-section">
+      <div class="time-header">
+        <h2>选择查询时段</h2>
+        <span v-if="rangePreview" class="range-preview">{{ rangePreview }}</span>
       </div>
-    </div>
+      <div class="time-slots">
+        <button
+          v-for="slot in timeSlotOptions"
+          :key="slot.key"
+          type="button"
+          class="time-slot"
+          :class="slotClass(slot)"
+          :disabled="slot.disabled"
+          @click="handleSlotClick(slot)"
+        >
+          {{ slot.label }}
+        </button>
+      </div>
+      <p class="time-hint">
+        至少连续选择 {{ activeSportConfig.minUnits * (activeSportConfig.slotMinutes / 30) }} 个时间单位（{{ minimumDurationText }}）
+      </p>
+    </section>
+
+    <section class="info-area">
+      <div v-if="loading" class="info info--loading">正在加载场地状态...</div>
+      <div v-else-if="error" class="info info--error">{{ error }}</div>
+      <div v-else-if="success" class="info info--success">{{ success }}</div>
+    </section>
+
+    <section class="results-card">
+      <div class="results-title">
+        <h2>场地可用状态</h2>
+        <span v-if="queriedRange" class="results-range">{{ resultRangeText }}</span>
+      </div>
+
+      <div v-if="!queriedRange" class="results-placeholder">
+        请选择开始和结束时间后点击“查询可用场地”
+      </div>
+      <div v-else-if="displayCourts.length === 0" class="results-placeholder">
+        暂无场地数据
+      </div>
+      <div v-else class="courts-grid">
+        <div
+          v-for="court in displayCourts"
+          :key="court.id"
+          class="court-card"
+          :class="[`${activeSport}-court`, { unavailable: !court.available }]"
+        >
+          <div class="court-number">{{ court.displayName }}</div>
+          <div class="court-status" :class="court.available ? 'available' : 'booked'">
+            {{ court.available ? '可用' : '占用' }}
+          </div>
+          <div v-if="court.note" class="court-note">{{ court.note }}</div>
+          <div v-else-if="court.updatedAt" class="court-note">
+            更新于 {{ court.updatedAt }}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <button
+      class="query-btn"
+      type="button"
+      :disabled="isQueryDisabled"
+      @click="submitQuery"
+    >
+      查询可用场地
+    </button>
   </div>
 </template>
+
 <script>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import api from "../api";
 
-const WEEK_MAP = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const SPORT_CONFIG = [
+  {
+    id: "badminton",
+    label: "羽毛球",
+    totalCourts: 18,
+    slotMinutes: 30,
+    minUnits: 2,
+    openMinutes: { start: 9 * 60, end: 21 * 60 },
+    weekendFullHour: true,
+    courtLabels: null,
+    rules: [
+      "营业时间：09:00-21:00",
+      "周一至周五可按半小时查询，至少连续1小时",
+      "周末仅支持整点预约，至少连续1小时",
+      "共 18 片场地"
+    ],
+  },
+  {
+    id: "basketball",
+    label: "篮球",
+    totalCourts: 4,
+    slotMinutes: 30,
+    minUnits: 2,
+    openMinutes: { start: 9 * 60, end: 21 * 60 },
+    weekendFullHour: false,
+    courtLabels: ["1A", "1B", "2A", "2B"],
+    rules: [
+      "营业时间：09:00-21:00",
+      "支持半小时为单位的查询，至少连续1小时",
+      "可跨越半点，示例：09:30-11:30",
+      "共 4 块场地（1A/1B/2A/2B）"
+    ],
+  },
+  {
+    id: "football",
+    label: "足球",
+    totalCourts: 2,
+    slotMinutes: 30,
+    minUnits: 2,
+    openMinutes: { start: 8 * 60, end: 22 * 60 + 30 },
+    weekendFullHour: false,
+    courtLabels: ["南场", "北场"],
+    rules: [
+      "营业时间：08:00-22:30",
+      "半小时为单位，至少连续1小时",
+      "共 2 块场地（南场 / 北场）"
+    ],
+  },
+];
 
-const COURT_META = {
-  badminton: {
-    label: "羽毛球场地",
-    name: "羽毛球",
-    containerId: "badminton-courts",
-  },
-  basketball: {
-    label: "篮球场地",
-    name: "篮球",
-    containerId: "basketball-courts",
-  },
-  football: {
-    label: "足球场地",
-    name: "足球",
-    containerId: "football-courts",
-  },
+const minutesToLabel = (minutes) => {
+  const h = Math.floor(minutes / 60)
+    .toString()
+    .padStart(2, "0");
+  const m = (minutes % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
 };
 
-function formatDisplayDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const week = WEEK_MAP[date.getDay()];
-  return `${year}年${month}月${day}日 ${week}`;
-}
+const labelToMinutes = (label) => {
+  const [hours, mins] = label.split(":").map((item) => parseInt(item, 10));
+  if (Number.isNaN(hours) || Number.isNaN(mins)) {
+    return 0;
+  }
+  return hours * 60 + mins;
+};
 
-function formatDateParam(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+const formatRangeText = (start, end) => `${minutesToLabel(start)} - ${minutesToLabel(end)}`;
 
-function adjustDate(date, offset) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + offset);
-  return next;
-}
+const buildSlotKey = (sportId, startLabel, endLabel) => `${sportId}|${startLabel}-${endLabel}`;
+
+const buildSlotCourtsBase = (meta) => {
+  const baseCourts = buildBaseCourts(meta);
+  return baseCourts.map((court, index) => ({
+    number: index + 1,
+    label: court.displayName,
+    available: true,
+    note: "",
+    updatedAt: "",
+  }));
+};
+
+const generateSlotTemplates = (meta) => {
+  const templates = [];
+  for (
+    let start = meta.openMinutes.start;
+    start + meta.slotMinutes <= meta.openMinutes.end;
+    start += meta.slotMinutes
+  ) {
+    const end = start + meta.slotMinutes;
+    const startLabel = minutesToLabel(start);
+    const endLabel = minutesToLabel(end);
+    templates.push({
+      key: buildSlotKey(meta.id, startLabel, endLabel),
+      label: startLabel,
+      startTime: startLabel,
+      endTime: endLabel,
+      available: true,
+      note: "",
+      updatedAt: "",
+      courts: buildSlotCourtsBase(meta),
+    });
+  }
+  return templates;
+};
+
+const adaptTimeSlotsBySport = (source = {}) => {
+  const adapted = {};
+  const globalMap = new Map(
+    (source.ALL || []).map((item) => [
+      buildSlotKey("ALL", item.startTime, item.endTime),
+      item,
+    ])
+  );
+  SPORT_CONFIG.forEach((meta) => {
+    const baseSlots = generateSlotTemplates(meta);
+    const recordMap = new Map(
+      (source[meta.id] || []).map((item) => [
+        item.slotKey || buildSlotKey(meta.id, item.startTime, item.endTime),
+        item,
+      ])
+    );
+    adapted[meta.id] = baseSlots.map((slot) => {
+      const record =
+        recordMap.get(slot.key) ||
+        globalMap.get(buildSlotKey("ALL", slot.startTime, slot.endTime));
+      if (!record) {
+        return slot;
+      }
+      const nextSlot = {
+        ...slot,
+        available: record ? Boolean(record.isAvailable) : slot.available,
+        note: record?.note || "",
+        updatedAt: record?.updated_at || record?.updatedAt || "",
+      };
+
+      const baseCourts = slot.courts.map((court) => ({
+        ...court,
+      }));
+      const recordCourts = record?.courts || [];
+      const courtMap = new Map(
+        recordCourts.map((court) => [court.number, court])
+      );
+      nextSlot.courts = baseCourts.map((court) => {
+        const recordCourt = courtMap.get(court.number);
+        const available = recordCourt
+          ? Boolean(recordCourt.isAvailable)
+          : nextSlot.available;
+        return {
+          ...court,
+          available,
+          note: recordCourt?.note || "",
+          updatedAt:
+            recordCourt?.updated_at || recordCourt?.updatedAt || nextSlot.updatedAt,
+        };
+      });
+      return nextSlot;
+    });
+  });
+  return adapted;
+};
 
 export default {
   name: "VenueBooking",
   setup() {
+    const activeSport = ref("badminton");
     const currentDate = ref(new Date());
-    const categories = ref([]);
-    const timeSlots = ref([]);
+    const selectedStart = ref(null); // minutes from midnight
+    const selectedEnd = ref(null); // minutes from midnight (inclusive slot start)
+    const queriedRange = ref(null); // { sportId, start, end }
     const loading = ref(false);
     const error = ref("");
+    const success = ref("");
+    const timeSlotsBySport = ref({});
+    const lastLoadedDate = ref("");
+    const availabilityResult = ref(null);
 
-    const formattedCurrentDate = computed(() =>
-      formatDisplayDate(currentDate.value)
+    const sportList = SPORT_CONFIG;
+
+    const activeSportConfig = computed(() =>
+      SPORT_CONFIG.find((item) => item.id === activeSport.value)
     );
-    const currentDateParam = computed(() => formatDateParam(currentDate.value));
 
-    const adaptCategories = (list = []) =>
-      list.map((category) => {
-        const type = category.type;
-        const meta = COURT_META[type] || {
-          label: category.title,
-          name: category.title,
-          containerId: `${type}-courts`,
-        };
-        const courts = (category.courts || []).map((court) => ({
-          id: `${type}-${court.number}`,
-          number: court.number,
-          available: court.isAvailable,
-          note: court.note ?? null,
-          updatedAt: court.updated_at ?? null,
-        }));
+    const formattedCurrentDate = computed(() => {
+      const options = { year: "numeric", month: "numeric", day: "numeric", weekday: "long" };
+      return currentDate.value.toLocaleDateString("zh-CN", options);
+    });
+
+    const currentDateParam = computed(() => {
+      const y = currentDate.value.getFullYear();
+      const m = (currentDate.value.getMonth() + 1).toString().padStart(2, "0");
+      const d = currentDate.value.getDate().toString().padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    });
+
+    const isWeekend = computed(() => {
+      const day = currentDate.value.getDay();
+      return day === 0 || day === 6;
+    });
+
+    const minimumDurationText = computed(() => {
+      const minutes = activeSportConfig.value.minUnits * activeSportConfig.value.slotMinutes;
+      if (minutes % 60 === 0) {
+        return `${minutes / 60}小时`;
+      }
+      return `${minutes}分钟`;
+    });
+
+    const activeRules = computed(() => activeSportConfig.value.rules);
+
+    const timeSlotOptions = computed(() => {
+      const config = activeSportConfig.value;
+      const slots = [];
+      const slotStateMap = new Map(
+        (timeSlotsBySport.value[config.id] || []).map((item) => [
+          labelToMinutes(item.startTime),
+          item,
+        ])
+      );
+      const latestStart = config.openMinutes.end - config.slotMinutes * config.minUnits;
+      for (let start = config.openMinutes.start; start <= latestStart; start += config.slotMinutes) {
+        const isDisabled = isSlotDisabled(config, start, isWeekend.value);
+        const slotState = slotStateMap.get(start);
+        const hasCourtAvailable = slotState
+          ? (slotState.courts || []).some((court) => court.available)
+          : true;
+        const slotFullyUnavailable = slotState
+          ? !slotState.available && !hasCourtAvailable
+          : false;
+        slots.push({
+          key: start,
+          start,
+          label: minutesToLabel(start),
+          disabled: isDisabled || slotFullyUnavailable,
+          unavailable: slotFullyUnavailable,
+        });
+      }
+      return slots;
+    });
+
+    const selectedSlotsSet = computed(() => {
+      const set = new Set();
+      if (selectedStart.value === null) {
+        return set;
+      }
+      const end = selectedEnd.value ?? selectedStart.value;
+      const step = activeSportConfig.value.slotMinutes;
+      for (let m = selectedStart.value; m <= end; m += step) {
+        set.add(m);
+      }
+      return set;
+    });
+
+    const rangePreview = computed(() => {
+      if (selectedStart.value === null) return "";
+      const config = activeSportConfig.value;
+      const start = selectedStart.value;
+      const effectiveEnd =
+        selectedEnd.value !== null
+          ? selectedEnd.value + config.slotMinutes
+          : start + config.slotMinutes * config.minUnits;
+      return `${formatRangeText(start, effectiveEnd)}（暂未提交）`;
+    });
+
+    const resultRangeText = computed(() => {
+      if (!queriedRange.value) return "";
+      return formatRangeText(queriedRange.value.start, queriedRange.value.end);
+    });
+
+    const isQueryDisabled = computed(
+      () => selectedStart.value === null || selectedEnd.value === null || loading.value
+    );
+
+    const extractCourtId = (sportId, number) => `${sportId}-${number}`;
+
+    const computeAvailabilityFromConfig = (sportId, startMinutes, endExclusive) => {
+      const meta = SPORT_CONFIG.find((item) => item.id === sportId);
+      if (!meta) {
+        return null;
+      }
+      const baseCourts = buildBaseCourts(meta);
+      const resultMap = new Map(
+        baseCourts.map((court) => [
+          court.id,
+          {
+            id: court.id,
+            number: court.backendKey,
+            isAvailable: true,
+            note: "",
+            updated_at: "",
+          },
+        ])
+      );
+      const slots = timeSlotsBySport.value[sportId] || [];
+      const relevantSlots = slots.filter((slot) => {
+        const slotStart = labelToMinutes(slot.startTime);
+        const slotEnd = labelToMinutes(slot.endTime);
+        return slotStart < endExclusive && slotEnd > startMinutes;
+      });
+      relevantSlots.forEach((slot) => {
+        const slotCourtMap = new Map(
+          (slot.courts || []).map((court) => [court.number, court])
+        );
+        resultMap.forEach((info) => {
+          const courtRecord = slotCourtMap.get(info.number);
+          const courtAvailable =
+            courtRecord !== undefined
+              ? courtRecord.available !== false
+              : slot.available !== false;
+          if (!courtAvailable) {
+            info.isAvailable = false;
+            const noteCandidate = courtRecord?.note || slot.note || "";
+            if (noteCandidate) {
+              info.note = info.note
+                ? `${info.note}；${noteCandidate}`
+                : noteCandidate;
+            }
+            const updatedCandidate =
+              courtRecord?.updated_at || courtRecord?.updatedAt || slot.updatedAt || "";
+            if (updatedCandidate) {
+              info.updated_at = updatedCandidate;
+            }
+          }
+        });
+      });
+      return {
+        sport: sportId,
+        courts: Array.from(resultMap.values()),
+      };
+    };
+
+    const mergeAvailabilityResults = (apiResult, configResult, sportId) => {
+      const mergedMap = new Map();
+      (configResult?.courts || []).forEach((court) => {
+        mergedMap.set(court.id, { ...court });
+      });
+      (apiResult?.courts || []).forEach((court) => {
+        const number = court.number ?? Number(court.id?.split("-").pop() || 0);
+        const id = court.id || extractCourtId(sportId, number);
+        const target = mergedMap.get(id);
+        const isAvailable = court.isAvailable ?? court.available ?? true;
+        const noteValue = court.note || "";
+        const updatedValue = court.updated_at || court.updatedAt || "";
+        if (target) {
+          target.isAvailable = target.isAvailable && Boolean(isAvailable);
+          if (!target.note && noteValue) {
+            target.note = noteValue;
+          }
+          if ((!target.updated_at || target.updated_at === "") && updatedValue) {
+            target.updated_at = updatedValue;
+          }
+        } else {
+          mergedMap.set(id, {
+            id,
+            number: number || 0,
+            isAvailable: Boolean(isAvailable),
+            note: noteValue,
+            updated_at: updatedValue,
+          });
+        }
+      });
+      return Array.from(mergedMap.values());
+    };
+
+    const displayCourts = computed(() => {
+      const meta = activeSportConfig.value;
+      const baseCourts = buildBaseCourts(meta);
+      const availability = availabilityResult.value;
+
+      if (availability && availability.sport === activeSport.value) {
+        const map = new Map();
+        (availability.courts || []).forEach((item) => {
+          map.set(item.id, item);
+        });
+        return baseCourts.map((court) => {
+          const record = map.get(court.id);
+          return {
+            id: court.id,
+            displayName: court.displayName,
+            available: record ? Boolean(record.isAvailable) : true,
+            note: record?.note || "",
+            updatedAt: record?.updated_at || record?.updatedAt || "",
+          };
+        });
+      }
+
+      return baseCourts.map((court) => {
         return {
-          type,
-          displayTitle: `${category.title} (${
-            category.total ?? courts.length
-          }片)`,
-          courtLabel: meta.name,
-          containerId: meta.containerId,
-          courts,
+          id: court.id,
+          displayName: court.displayName,
+          available: true,
+          note: "",
+          updatedAt: "",
         };
       });
+    });
 
-    const adaptTimeSlots = (list = []) =>
-      list.map((slot) => ({
-        key: slot.slotKey,
-        label: `${slot.startTime}-${slot.endTime}`,
-        available: slot.isAvailable,
-        note: slot.note ?? null,
-        updatedAt: slot.updated_at ?? null,
-      }));
+    const invalidateResults = () => {
+      availabilityResult.value = null;
+      queriedRange.value = null;
+      success.value = "";
+    };
+
+    const changeSport = (sportId) => {
+      if (activeSport.value === sportId) return;
+      activeSport.value = sportId;
+      clearSelection();
+    };
+
+    const changeDate = (offset) => {
+      const next = new Date(currentDate.value);
+      next.setDate(next.getDate() + offset);
+      currentDate.value = next;
+      clearSelection();
+    };
+
+    const isSlotDisabled = (config, start, weekend) => {
+      if (weekend && config.weekendFullHour && start % 60 !== 0) {
+        return true;
+      }
+      return false;
+    };
+
+    const handleSlotClick = (slot) => {
+      if (slot.disabled) return;
+      const startValue = slot.start;
+      const config = activeSportConfig.value;
+      invalidateResults();
+
+      if (selectedStart.value === null) {
+        selectedStart.value = startValue;
+        selectedEnd.value = null;
+        availabilityResult.value = null;
+        queriedRange.value = null;
+        return;
+      }
+
+      if (selectedEnd.value === null) {
+        if (startValue === selectedStart.value) {
+          clearSelection();
+          return;
+        }
+        if (startValue < selectedStart.value) {
+          selectedStart.value = startValue;
+          selectedEnd.value = null;
+          return;
+        }
+        const units = (startValue - selectedStart.value) / config.slotMinutes + 1;
+        if (units < config.minUnits) {
+          selectedStart.value = startValue;
+          selectedEnd.value = null;
+          return;
+        }
+        selectedEnd.value = startValue;
+        return;
+      }
+
+      if (startValue < selectedStart.value) {
+        selectedStart.value = startValue;
+        selectedEnd.value = null;
+        return;
+      }
+
+      if (startValue === selectedStart.value) {
+        clearSelection();
+        return;
+      }
+
+      const units = (startValue - selectedStart.value) / config.slotMinutes + 1;
+      if (units < config.minUnits) {
+        selectedStart.value = startValue;
+        selectedEnd.value = null;
+        return;
+      }
+
+      selectedEnd.value = startValue;
+    };
+
+    const clearSelection = () => {
+      selectedStart.value = null;
+      selectedEnd.value = null;
+      invalidateResults();
+    };
 
     const fetchOverview = async () => {
       loading.value = true;
@@ -190,309 +599,473 @@ export default {
       try {
         const response = await api.venue.getOverview(currentDateParam.value);
         if (!response || response.code !== 0) {
-          throw new Error(response?.message || "获取场地数据失败");
+          throw new Error(response?.message || "获取场馆数据失败");
         }
         const data = response.data || {};
-        categories.value = adaptCategories(data.categories);
-        timeSlots.value = adaptTimeSlots(data.timeSlots);
+        timeSlotsBySport.value = adaptTimeSlotsBySport(data.timeSlotsBySport || {});
+        lastLoadedDate.value = currentDateParam.value;
       } catch (err) {
-        console.error("加载场地状态失败", err);
-        error.value = err?.message || "加载场地状态失败";
-        categories.value = [];
-        timeSlots.value = [];
+        console.error("获取场馆数据失败", err);
+        error.value = err?.message || "获取场馆数据失败";
+        timeSlotsBySport.value = {};
       } finally {
         loading.value = false;
       }
     };
 
-    const notifyDateChange = async (direction) => {
-      const offset = direction === "prev" ? -1 : 1;
-      currentDate.value = adjustDate(currentDate.value, offset);
-      await fetchOverview();
+    const ensureData = async (force = false) => {
+      if (force || lastLoadedDate.value !== currentDateParam.value) {
+        await fetchOverview();
+      }
     };
 
-    onMounted(fetchOverview);
+    const submitQuery = async () => {
+      if (isQueryDisabled.value || selectedStart.value === null || selectedEnd.value === null) {
+        return;
+      }
+      loading.value = true;
+      error.value = "";
+      success.value = "";
+      availabilityResult.value = null;
+      try {
+        await ensureData(true);
+        if (error.value) {
+          throw new Error(error.value);
+        }
+        // 确保在刷新配置后依旧显示加载态
+        loading.value = true;
+
+        const config = activeSportConfig.value;
+        const endExclusive = selectedEnd.value + config.slotMinutes;
+        const startLabel = minutesToLabel(selectedStart.value);
+        const endLabel = minutesToLabel(endExclusive);
+
+        const response = await api.venue.getAvailability({
+          sport: activeSport.value,
+          date: currentDateParam.value,
+          startTime: startLabel,
+          endTime: endLabel,
+        });
+        if (!response || response.code !== 0) {
+          throw new Error(response?.message || "查询可用场地失败");
+        }
+        const apiResult = response.data || null;
+        const configResult = computeAvailabilityFromConfig(
+          activeSport.value,
+          selectedStart.value,
+          endExclusive
+        );
+        const mergedCourts = mergeAvailabilityResults(
+          apiResult,
+          configResult,
+          activeSport.value
+        );
+        const finalCourts =
+          mergedCourts.length > 0
+            ? mergedCourts
+            : configResult?.courts || [];
+        availabilityResult.value = {
+          sport: activeSport.value,
+          courts: finalCourts,
+        };
+        queriedRange.value = {
+          sportId: activeSport.value,
+          start: selectedStart.value,
+          end: endExclusive,
+        };
+        success.value = "查询成功，以下为筛选结果";
+      } catch (err) {
+        console.error("查询可用场地失败", err);
+        error.value = err?.message || "查询可用场地失败";
+        queriedRange.value = null;
+        availabilityResult.value = null;
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    const slotClass = (slot) => {
+      const classes = [];
+      if (slot.disabled) classes.push("disabled");
+      if (slot.unavailable) classes.push("unavailable");
+      if (selectedSlotsSet.value.has(slot.start)) classes.push("selected");
+      return classes.join(" ");
+    };
+
+    watch(currentDateParam, () => {
+      availabilityResult.value = null;
+      fetchOverview();
+    });
+
+    onMounted(() => {
+      fetchOverview();
+    });
 
     return {
-      categories,
-      timeSlots,
+      sportList,
+      activeSport,
+      activeSportConfig,
+      formattedCurrentDate,
+      activeRules,
+      timeSlotOptions,
+      rangePreview,
+      changeSport,
+      changeDate,
+      handleSlotClick,
+      slotClass,
+      submitQuery,
+      isQueryDisabled,
+      minimumDurationText,
       loading,
       error,
-      formattedCurrentDate,
-      notifyDateChange,
+      success,
+      displayCourts,
+      availabilityResult,
+      queriedRange,
+      resultRangeText,
     };
   },
 };
+
+function buildBaseCourts(meta) {
+  const list = [];
+  if (meta.courtLabels && meta.courtLabels.length) {
+    meta.courtLabels.forEach((label, index) => {
+      list.push({
+        id: `${meta.id}-${index + 1}`,
+        displayName: label,
+        backendKey: index + 1,
+      });
+    });
+  } else {
+    for (let i = 1; i <= meta.totalCourts; i += 1) {
+      list.push({
+        id: `${meta.id}-${i}`,
+        displayName: `${meta.label}${i}号场`,
+        backendKey: i,
+      });
+    }
+  }
+  return list;
+}
 </script>
+
 <style scoped>
-.venue-booking-page {
-  max-width: 500px;
+.venue-query-page {
+  max-width: 520px;
   margin: 0 auto;
-  padding: 15px;
-  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-  min-height: 100vh;
+  padding: 18px 16px 40px;
   background-color: #f5f5f5;
-  color: #333;
+  color: #1f2937;
+  min-height: 100vh;
   box-sizing: border-box;
-  font-family: "PingFang SC", "Helvetica Neue", Arial, sans-serif;
 }
 
-.header {
+.page-header {
   text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 16px;
   margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #eaeaea;
 }
 
-.content-area {
-  margin-top: 10px;
+.page-header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
 }
 
-.loading-state {
-  padding: 40px 0;
-  text-align: center;
-  color: #666;
-  font-size: 14px;
-}
-
-.info-bar {
-  margin-bottom: 16px;
-  padding: 12px;
-  border-radius: 8px;
+.page-header p {
+  margin-top: 6px;
   font-size: 13px;
+  color: #6b7280;
 }
 
-.info-bar.error {
-  background-color: rgba(255, 76, 76, 0.12);
-  color: #c62828;
+.sport-tabs {
+  display: flex;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  margin-bottom: 18px;
 }
 
-.info-bar.empty {
-  background-color: rgba(7, 193, 96, 0.08);
-  color: #0ea75a;
-  text-align: center;
+.sport-tab {
+  flex: 1;
+  border: none;
+  padding: 12px 0;
+  background: #fff;
+  color: #374151;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
 }
 
-.header h1 {
-  font-size: 20px;
-  color: #1a1a1a;
-  margin-bottom: 5px;
+.sport-tab.active {
+  background: #07c160;
+  color: #fff;
 }
 
 .date-selector {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 15px;
-  background-color: #fff;
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  margin-bottom: 18px;
 }
+
 .date-btn {
-  background: none;
   border: none;
-  font-size: 18px;
-  color: #666;
+  background: none;
+  font-size: 16px;
+  color: #4b5563;
+  cursor: pointer;
 }
 
 .current-date {
-  font-weight: bold;
-  color: #1a1a1a;
+  font-weight: 600;
+  color: #111827;
 }
 
-.category {
+.rules-card {
+  background: #e8f5e9;
+  color: #276749;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.rules-card ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.time-section {
+  background: #fff;
+  padding: 18px;
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
   margin-bottom: 20px;
 }
 
-.category-title {
-  font-size: 18px;
-  margin-bottom: 10px;
-  padding-left: 5px;
-  border-left: 4px solid #07c160;
-  color: #1a1a1a;
+.time-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
-.courts-container {
+.time-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.range-preview {
+  font-size: 12px;
+  color: #2563eb;
+}
+
+.time-slots {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-  padding-top: 24px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.time-slot {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 0;
+  font-size: 14px;
+  cursor: pointer;
+  background: #f3f4f6;
+  color: #1f2937;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.time-slot:hover:not(.disabled) {
+  transform: translateY(-1px);
+}
+
+.time-slot.selected {
+  background: #07c160;
+  color: #fff;
+}
+
+.time-slot.disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.time-slot.unavailable {
+  background: rgba(248, 113, 113, 0.18);
+  color: #b91c1c;
+}
+
+.time-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.info-area {
+  min-height: 20px;
+  margin-bottom: 18px;
+}
+
+.info {
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.info--loading {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+}
+
+.info--error {
+  background: rgba(248, 113, 113, 0.14);
+  color: #b91c1c;
+}
+
+.info--success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.results-card {
+  background: #fff;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+  margin-bottom: 20px;
+}
+
+.results-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 18px;
+}
+
+.results-title h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.results-range {
+  font-size: 12px;
+  color: #0f766e;
+}
+
+.results-placeholder {
+  text-align: center;
+  color: #6b7280;
+  font-size: 13px;
+  padding: 24px 0;
+}
+
+.courts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 14px;
 }
 
 .court-card {
-  background-color: #fff;
-  border-radius: 12px;
-  padding: 38px 12px 16px;
-  text-align: center;
-  box-shadow: 0 6px 14px rgba(7, 193, 96, 0.12);
-  transition: all 0.2s;
-  position: relative;
-  overflow: visible;
-  min-height: 124px;
+  border-radius: 14px;
+  padding: 14px;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  gap: 10px;
+  justify-content: space-between;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-}
-
-.court-card.booked {
-  filter: grayscale(0.1);
-  opacity: 0.85;
-}
-
-.badminton-court {
-  background-image: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
-    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23e8f5e9"/><rect x="10" y="10" width="80" height="80" fill="none" stroke="%234caf50" stroke-width="2"/><line x1="50" y1="10" x2="50" y2="90" stroke="%234caf50" stroke-width="2"/><circle cx="50" cy="50" r="5" fill="%234caf50"/></svg>');
-}
-
-.basketball-court {
-  background-image: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
-    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23ffecb3"/><rect x="10" y="10" width="80" height="80" fill="none" stroke="%23ff9800" stroke-width="2"/><circle cx="50" cy="50" r="20" fill="none" stroke="%23ff9800" stroke-width="2"/><line x1="10" y1="50" x2="90" y2="50" stroke="%23ff9800" stroke-width="2"/><circle cx="50" cy="50" r="5" fill="%23ff9800"/></svg>');
-}
-
-.football-court {
-  background-image: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
-    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23c8e6c9"/><rect x="10" y="10" width="80" height="80" fill="none" stroke="%232e7d32" stroke-width="2"/><circle cx="50" cy="50" r="15" fill="none" stroke="%232e7d32" stroke-width="2"/><line x1="50" y1="10" x2="50" y2="90" stroke="%232e7d32" stroke-width="2"/><rect x="10" y="35" width="10" height="30" fill="none" stroke="%232e7d32" stroke-width="2"/><rect x="80" y="35" width="10" height="30" fill="none" stroke="%232e7d32" stroke-width="2"/></svg>');
-}
-.court-card:active {
-  transform: scale(0.98);
-}
-
-.court-name {
-  font-size: 16px;
-  margin: 0;
+  position: relative;
+  overflow: hidden;
   color: #fff;
-  font-weight: 600;
-  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.6);
-  letter-spacing: 1px;
+  box-shadow: inset 0 -60px 80px rgba(0, 0, 0, 0.25);
 }
 
-.court-number-badge {
-  position: absolute;
-  top: -14px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+.court-card.unavailable {
+  filter: grayscale(0.15);
+  opacity: 0.9;
+}
+
+.court-number {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.court-status {
+  align-self: flex-start;
+  padding: 4px 10px;
   border-radius: 999px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.95),
-    rgba(255, 255, 255, 0.75)
-  );
-  color: #0ea75a;
-  font-weight: 600;
   font-size: 12px;
-  box-shadow: 0 10px 20px rgba(14, 167, 90, 0.18);
-  backdrop-filter: blur(4px);
-}
-
-.badge-text {
-  letter-spacing: 0.5px;
-  writing-mode: horizontal-tb;
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-  font-size: 14px;
-  font-weight: 600;
-  color: #0ea75a;
-}
-
-.status {
-  font-size: 12px;
-  padding: 5px 16px;
-  border-radius: 16px;
-  display: inline-block;
-  background-color: rgba(232, 245, 233, 0.92);
-  color: #1b7d35;
-  letter-spacing: 1px;
   margin-top: auto;
 }
 
-.status.booked {
-  background-color: rgba(255, 235, 238, 0.9);
-  color: #c62828;
+.court-status.available {
+  background: rgba(34, 197, 94, 0.85);
 }
 
-.court-card.booked .status {
-  background-color: rgba(255, 235, 238, 0.9);
-  color: #c62828;
+.court-status.booked {
+  background: rgba(239, 68, 68, 0.9);
 }
 
 .court-note {
   margin-top: 6px;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.85);
-  background-color: rgba(0, 0, 0, 0.25);
-  padding: 4px 8px;
-  border-radius: 12px;
-}
-
-.time-slots {
-  background-color: #fff;
-  border-radius: 8px;
-  padding: 15px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-}
-
-.time-title {
-  font-size: 16px;
-  margin-bottom: 10px;
-  color: #1a1a1a;
-}
-
-.slots-container {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.time-slot {
-  padding: 10px 6px;
-  text-align: center;
-  background-color: #f5f5f5;
-  border-radius: 6px;
-  font-size: 13px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
-}
-
-.time-slot.booked {
-  background-color: #ffcdd2;
-  box-shadow: inset 0 0 0 1px rgba(198, 40, 40, 0.25);
-}
-
-.slot-time {
-  font-weight: 600;
-  color: #1a1a1a;
-}
-
-.slot-status {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background-color: rgba(7, 193, 96, 0.1);
-  color: #0ea75a;
-}
-
-.time-slot.booked .slot-status {
-  background-color: rgba(198, 40, 40, 0.1);
-  color: #c62828;
-}
-
-.slot-note {
   font-size: 11px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.badminton-court {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.3)),
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23e8f5e9"/><rect x="10" y="10" width="80" height="80" fill="none" stroke="%234caf50" stroke-width="2"/><line x1="50" y1="10" x2="50" y2="90" stroke="%234caf50" stroke-width="2"/><circle cx="50" cy="50" r="5" fill="%234caf50"/></svg>');
+}
+
+.basketball-court {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.3)),
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23ffecb3"/><rect x="10" y="10" width="80" height="80" fill="none" stroke="%23ff9800" stroke-width="2"/><circle cx="50" cy="50" r="20" fill="none" stroke="%23ff9800" stroke-width="2"/><line x1="10" y1="50" x2="90" y2="50" stroke="%23ff9800" stroke-width="2"/><circle cx="50" cy="50" r="5" fill="%23ff9800"/></svg>');
+}
+
+.football-court {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.35)),
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23c8e6c9"/><rect x="10" y="10" width="80" height="80" fill="none" stroke="%232e7d32" stroke-width="2"/><circle cx="50" cy="50" r="15" fill="none" stroke="%232e7d32" stroke-width="2"/><line x1="50" y1="10" x2="50" y2="90" stroke="%232e7d32" stroke-width="2"/><rect x="10" y="35" width="10" height="30" fill="none" stroke="%232e7d32" stroke-width="2"/><rect x="80" y="35" width="10" height="30" fill="none" stroke="%232e7d32" stroke-width="2"/></svg>');
+}
+
+.query-btn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #07c160, #0bb172);
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.query-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 420px) {
+  .time-slots {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .courts-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
 }
 </style>

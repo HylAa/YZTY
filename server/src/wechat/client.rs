@@ -72,7 +72,11 @@ impl WechatClient {
     pub async fn get_access_token(&self) -> Result<String, String> {
         // 检查缓存
         if let Some(token) = self.cache.get(ACCESS_TOKEN_CACHE_KEY).await {
-            if !self.cache.should_refresh(ACCESS_TOKEN_CACHE_KEY, TOKEN_EXPIRE_ADVANCE).await {
+            if !self
+                .cache
+                .should_refresh(ACCESS_TOKEN_CACHE_KEY, TOKEN_EXPIRE_ADVANCE)
+                .await
+            {
                 return Ok(token);
             }
         }
@@ -124,7 +128,11 @@ impl WechatClient {
     pub async fn get_jsapi_ticket(&self) -> Result<String, String> {
         // 检查缓存
         if let Some(ticket) = self.cache.get(JSAPI_TICKET_CACHE_KEY).await {
-            if !self.cache.should_refresh(JSAPI_TICKET_CACHE_KEY, TOKEN_EXPIRE_ADVANCE).await {
+            if !self
+                .cache
+                .should_refresh(JSAPI_TICKET_CACHE_KEY, TOKEN_EXPIRE_ADVANCE)
+                .await
+            {
                 return Ok(ticket);
             }
         }

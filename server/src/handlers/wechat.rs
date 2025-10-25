@@ -1,5 +1,8 @@
 use crate::{
-    db::wechat_user::{bind_phone as bind_phone_record, upsert_wechat_user, NewWechatUser, WechatUser as StoredWechatUser},
+    db::wechat_user::{
+        bind_phone as bind_phone_record, upsert_wechat_user, NewWechatUser,
+        WechatUser as StoredWechatUser,
+    },
     wechat::crypto,
     AppState,
 };
@@ -136,8 +139,10 @@ pub async fn api_wechat_userinfo(
         Ok(user_info) => {
             let fallback_nickname = user_info.nickname.clone();
             let fallback_avatar = user_info.headimgurl.clone();
-            let nickname_ref = (!fallback_nickname.trim().is_empty()).then_some(fallback_nickname.as_str());
-            let avatar_ref = (!fallback_avatar.trim().is_empty()).then_some(fallback_avatar.as_str());
+            let nickname_ref =
+                (!fallback_nickname.trim().is_empty()).then_some(fallback_nickname.as_str());
+            let avatar_ref =
+                (!fallback_avatar.trim().is_empty()).then_some(fallback_avatar.as_str());
 
             match upsert_wechat_user(
                 &state.db_pool,
@@ -196,7 +201,7 @@ pub struct DecryptReq {
     #[serde(rename = "encryptedData")]
     encrypted_data: String,
     iv: String,
-    code: Option<String>, // 用于获取session_key的code
+    code: Option<String>,        // 用于获取session_key的code
     session_key: Option<String>, // 或直接提供session_key
 }
 
@@ -216,12 +221,10 @@ pub async fn api_wechat_decrypt_phone(
         key
     } else if let Some(code) = req.code {
         match client.get_phone_session(&code).await {
-            Ok(session) => {
-                session.session_key.unwrap_or_else(|| {
-                    eprintln!("Session key not found in response");
-                    String::new()
-                })
-            }
+            Ok(session) => session.session_key.unwrap_or_else(|| {
+                eprintln!("Session key not found in response");
+                String::new()
+            }),
             Err(e) => {
                 eprintln!("Failed to get session: {}", e);
                 return (
@@ -333,7 +336,10 @@ pub async fn api_wechat_bind_phone(
     if !valid_phone {
         return (
             StatusCode::BAD_REQUEST,
-            Json(ApiResponse::<WxUser>::error(400, "手机号格式不正确".to_string())),
+            Json(ApiResponse::<WxUser>::error(
+                400,
+                "手机号格式不正确".to_string(),
+            )),
         );
     }
 
@@ -341,13 +347,19 @@ pub async fn api_wechat_bind_phone(
         Ok(Some(record)) => (StatusCode::OK, Json(ApiResponse::ok(WxUser::from(record)))),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(ApiResponse::<WxUser>::error(404, "未找到对应的微信用户".to_string())),
+            Json(ApiResponse::<WxUser>::error(
+                404,
+                "未找到对应的微信用户".to_string(),
+            )),
         ),
         Err(e) => {
             eprintln!("Failed to bind phone: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<WxUser>::error(500, "绑定手机号失败".to_string())),
+                Json(ApiResponse::<WxUser>::error(
+                    500,
+                    "绑定手机号失败".to_string(),
+                )),
             )
         }
     }

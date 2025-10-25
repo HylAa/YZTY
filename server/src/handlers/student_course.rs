@@ -83,7 +83,10 @@ pub async fn api_student_courses_by_phone(
     if phone.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(ApiResponse::<StudentCourseResponse>::msg(400, "手机号不能为空")),
+            Json(ApiResponse::<StudentCourseResponse>::msg(
+                400,
+                "手机号不能为空",
+            )),
         );
     }
 
@@ -119,7 +122,10 @@ pub async fn api_student_courses_by_phone(
             eprintln!("[student_courses] 数据库查询失败: {}", err);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<StudentCourseResponse>::msg(500, "查询学员课程失败，请稍后再试")),
+                Json(ApiResponse::<StudentCourseResponse>::msg(
+                    500,
+                    "查询学员课程失败，请稍后再试",
+                )),
             )
         }
     }

@@ -3,7 +3,7 @@
     <header class="page-header">
       <div>
         <h1>场馆占用管理</h1>
-        <p class="subtitle">配置当天各场地及时段的占用状态</p>
+        <p class="subtitle">配置不同运动的场地与时段占用情况</p>
       </div>
       <div class="header-actions">
         <button class="ghost-btn" @click="handleLogout">退出登录</button>
@@ -12,21 +12,15 @@
 
     <section class="control-bar">
       <div class="date-selector">
-        <button class="date-btn" @click="changeDate('prev')">← 前一天</button>
-        <div class="current-date">
-          {{ formattedCurrentDate }}
-        </div>
-        <button class="date-btn" @click="changeDate('next')">后一天 →</button>
+        <button class="date-btn" @click="changeDate(-1)">← 前一天</button>
+        <div class="current-date">{{ formattedCurrentDate }}</div>
+        <button class="date-btn" @click="changeDate(1)">后一天 →</button>
       </div>
       <div class="control-actions">
         <button class="ghost-btn" :disabled="loading" @click="fetchOverview">
           刷新
         </button>
-        <button
-          class="primary-btn"
-          :disabled="!hasChanges || saving"
-          @click="saveChanges"
-        >
+        <button class="primary-btn" :disabled="!hasChanges || saving" @click="saveChanges">
           {{ saving ? "保存中..." : "保存变更" }}
         </button>
       </div>
@@ -34,65 +28,34 @@
 
     <section class="feedback-area">
       <div v-if="loading" class="info info--loading">正在加载数据...</div>
-      <div v-else-if="error" class="info info--error">
-        {{ error }}
-      </div>
-      <div v-else-if="success" class="info info--success">
-        {{ success }}
-      </div>
+      <div v-else-if="error" class="info info--error">{{ error }}</div>
+      <div v-else-if="success" class="info info--success">{{ success }}</div>
     </section>
 
     <section v-if="!loading && !error" class="content">
-      <div v-if="!categories.length" class="info info--muted">暂无场地数据</div>
+      <div v-if="!activeTimeSlots.length" class="info info--muted">暂无时段数据</div>
 
-      <div
-        v-for="category in categories"
-        :key="category.type"
-        class="category-block"
-      >
-        <div class="category-header">
-          <h2>{{ category.displayTitle }}</h2>
-          <span class="meta">共 {{ category.courts.length }} 片</span>
-        </div>
-
-        <div class="courts-grid">
-          <div
-            v-for="court in category.courts"
-            :key="court.id"
-            class="court-item"
-          >
-            <div class="court-top">
-              <div class="court-number">场地 {{ court.number }}</div>
-              <button
-                class="toggle-btn"
-                :class="court.available ? 'available' : 'booked'"
-                @click="toggleCourt(category.type, court)"
-              >
-                {{ court.available ? "可用" : "占用" }}
-              </button>
-            </div>
-            <div class="note-row">
-              <input
-                v-model="court.note"
-                type="text"
-                placeholder="备注（可选）"
-                @input="markCourtChanged(court)"
-              />
-            </div>
-            <div v-if="court.updatedAt" class="meta-row">
-              最近更新：{{ court.updatedAt }}
-            </div>
+      <div class="time-manage">
+        <div class="time-header">
+          <div>
+            <h2>时段占用管理</h2>
+            <p class="time-hint">{{ timeSlotHint }}</p>
+          </div>
+          <div class="time-tabs">
+            <button
+              v-for="sport in sportList"
+              :key="sport.id"
+              type="button"
+              class="time-tab"
+              :class="{ active: sport.id === timeSlotSport }"
+              @click="changeTimeSlotSport(sport.id)"
+            >
+              {{ sport.label }}
+            </button>
           </div>
         </div>
-      </div>
-
-      <!-- <div v-if="timeSlots.length" class="time-block">
-        <div class="category-header">
-          <h2>时段占用管理</h2>
-          <span class="meta">共 {{ timeSlots.length }} 个时段</span>
-        </div>
         <div class="slots-grid">
-          <div v-for="slot in timeSlots" :key="slot.key" class="slot-item">
+          <div v-for="slot in activeTimeSlots" :key="slot.key" class="slot-item">
             <div class="slot-top">
               <div class="slot-label">{{ slot.label }}</div>
               <button
@@ -106,17 +69,33 @@
             <div class="note-row">
               <input
                 v-model="slot.note"
-                @input="markSlotChanged(slot)"
                 type="text"
                 placeholder="备注（可选）"
+                @input="markSlotChanged(slot)"
               />
+            </div>
+            <div v-if="slot.courts && slot.courts.length" class="slot-courts">
+              <button
+                v-for="court in slot.courts"
+                :key="`${slot.key}-${court.number}`"
+                type="button"
+                class="slot-court-btn"
+                :class="{
+                  available: court.available,
+                  booked: !court.available,
+                  dirty: court.changed,
+                }"
+                @click="toggleSlotCourt(slot, court)"
+              >
+                {{ court.label }}
+              </button>
             </div>
             <div v-if="slot.updatedAt" class="meta-row">
               最近更新：{{ slot.updatedAt }}
             </div>
           </div>
         </div>
-      </div> -->
+      </div>
     </section>
   </div>
 </template>
@@ -127,17 +106,38 @@ import api from "../../api";
 
 const WEEK_MAP = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
-const COURT_META = {
-  badminton: {
-    label: "羽毛球场地",
+const SPORT_CONFIG = [
+  {
+    id: "badminton",
+    label: "羽毛球",
+    courtTotal: 18,
+    courtLabels: [],
+    slotMinutes: 30,
+    openStart: 9 * 60,
+    openEnd: 21 * 60,
+    minUnits: 2,
   },
-  basketball: {
-    label: "篮球场地",
+  {
+    id: "basketball",
+    label: "篮球",
+    courtTotal: 4,
+    courtLabels: ["1A", "1B", "2A", "2B"],
+    slotMinutes: 30,
+    openStart: 9 * 60,
+    openEnd: 21 * 60,
+    minUnits: 2,
   },
-  football: {
-    label: "足球场地",
+  {
+    id: "football",
+    label: "足球",
+    courtTotal: 2,
+    courtLabels: ["南场", "北场"],
+    slotMinutes: 30,
+    openStart: 8 * 60,
+    openEnd: 22 * 60 + 30,
+    minUnits: 2,
   },
-};
+];
 
 function formatDisplayDate(date) {
   const year = date.getFullYear();
@@ -160,51 +160,169 @@ function adjustDate(date, offset) {
   return next;
 }
 
+function minutesToLabel(minutes) {
+  const hours = Math.floor(minutes / 60)
+    .toString()
+    .padStart(2, "0");
+  const mins = (minutes % 60).toString().padStart(2, "0");
+  return `${hours}:${mins}`;
+}
+
+function buildSlotKey(sportId, startLabel, endLabel) {
+  return `${sportId}|${startLabel}-${endLabel}`;
+}
+
+function buildSlotCourtsBase(config) {
+  return Array.from({ length: config.courtTotal }, (_, index) => {
+    const number = index + 1;
+    const label = config.courtLabels?.[index] || `${config.label}${number}号场`;
+    return {
+      number,
+      label,
+      available: true,
+      initialAvailable: true,
+      note: "",
+      initialNote: "",
+      updatedAt: "",
+      changed: false,
+    };
+  });
+}
+
+function generateSlotTemplates(config) {
+  const result = [];
+  for (
+    let start = config.openStart;
+    start + config.slotMinutes <= config.openEnd;
+    start += config.slotMinutes
+  ) {
+    const end = start + config.slotMinutes;
+    const startLabel = minutesToLabel(start);
+    const endLabel = minutesToLabel(end);
+    result.push({
+      key: buildSlotKey(config.id, startLabel, endLabel),
+      label: startLabel,
+      startTime: startLabel,
+      endTime: endLabel,
+      available: true,
+      initialAvailable: true,
+      note: "",
+      initialNote: "",
+      updatedAt: "",
+      changed: false,
+      courts: buildSlotCourtsBase(config),
+    });
+  }
+  return result;
+}
+
+function updateCourtChangedState(slot, court) {
+  const note = court.note || "";
+  const initialNote = court.initialNote || "";
+  court.changed = court.available !== court.initialAvailable || note !== initialNote;
+  updateSlotChangedState(slot);
+}
+
+function updateSlotChangedState(slot) {
+  const note = slot.note || "";
+  const initialNote = slot.initialNote || "";
+  const hasCourtDiff = (slot.courts || []).some((court) => court.changed);
+  slot.changed = slot.available !== slot.initialAvailable || note !== initialNote || hasCourtDiff;
+}
+
 export default {
   name: "AdminVenueManager",
   setup() {
     const currentDate = ref(new Date());
-    const categories = ref([]);
-    const timeSlots = ref([]);
+    const timeSlotsBySport = ref({});
+    const timeSlotSport = ref(SPORT_CONFIG[0].id);
     const loading = ref(false);
     const saving = ref(false);
     const error = ref("");
     const success = ref("");
 
-    const formattedCurrentDate = computed(() =>
-      formatDisplayDate(currentDate.value)
-    );
+    const formattedCurrentDate = computed(() => formatDisplayDate(currentDate.value));
     const currentDateParam = computed(() => formatDateParam(currentDate.value));
 
-    const adaptCategories = (list = []) =>
-      list.map((category) => {
-        const type = category.type;
-        const meta = COURT_META[type] || { label: category.title };
-        return {
-          type,
-          displayTitle: `${meta.label ?? category.title} (${
-            category.total ?? 0
-          }片)`,
-          courts: (category.courts || []).map((court) => ({
-            id: `${type}-${court.number}`,
-            number: court.number,
-            available: court.isAvailable,
-            note: court.note ?? "",
-            updatedAt: court.updated_at ?? "",
-            changed: false,
-          })),
-        };
-      });
+    const sportList = SPORT_CONFIG;
 
-    const adaptTimeSlots = (list = []) =>
-      list.map((slot) => ({
-        key: slot.slotKey,
-        label: `${slot.startTime}-${slot.endTime}`,
-        available: slot.isAvailable,
-        note: slot.note ?? "",
-        updatedAt: slot.updated_at ?? "",
-        changed: false,
-      }));
+    const activeTimeSlots = computed(
+      () => timeSlotsBySport.value[timeSlotSport.value] || []
+    );
+
+    const timeSlotMeta = computed(() =>
+      SPORT_CONFIG.find((item) => item.id === timeSlotSport.value)
+    );
+
+    const timeSlotHint = computed(() => {
+      const meta = timeSlotMeta.value;
+      if (!meta) return "";
+      const minimum = meta.slotMinutes * meta.minUnits;
+      const durationText =
+        minimum % 60 === 0 ? `${minimum / 60}小时` : `${minimum}分钟`;
+      return `基础单位 ${meta.slotMinutes} 分钟，至少连续 ${durationText}`;
+    });
+
+    const adaptTimeSlotsBySport = (map = {}) => {
+      const result = {};
+      const globalMap = new Map(
+        (map.ALL || []).map((item) => [
+          buildSlotKey("ALL", item.startTime, item.endTime),
+          item,
+        ])
+      );
+      SPORT_CONFIG.forEach((config) => {
+        const base = generateSlotTemplates(config);
+        const recordMap = new Map(
+          (map[config.id] || []).map((item) => [
+            item.slotKey || buildSlotKey(config.id, item.startTime, item.endTime),
+            item,
+          ])
+        );
+        result[config.id] = base.map((slot) => {
+          const record =
+            recordMap.get(slot.key) ||
+            globalMap.get(buildSlotKey("ALL", slot.startTime, slot.endTime));
+
+          const nextSlot = {
+            ...slot,
+            available: record ? Boolean(record.isAvailable) : slot.available,
+            note: record?.note || "",
+            updatedAt: record?.updated_at || record?.updatedAt || "",
+            changed: false,
+          };
+
+          nextSlot.initialAvailable = nextSlot.available;
+          nextSlot.initialNote = nextSlot.note;
+
+          const baseCourts = slot.courts.map((court) => ({ ...court }));
+          const recordCourts = record?.courts || [];
+          const courtMap = new Map(recordCourts.map((court) => [court.number, court]));
+
+          nextSlot.courts = baseCourts.map((court) => {
+            const recordCourt = courtMap.get(court.number);
+            const available = recordCourt
+              ? Boolean(recordCourt.isAvailable)
+              : nextSlot.available;
+            const note = recordCourt?.note || "";
+            const updatedAt = recordCourt?.updated_at || recordCourt?.updatedAt || "";
+
+            return {
+              ...court,
+              available,
+              note,
+              updatedAt,
+              initialAvailable: available,
+              initialNote: note,
+              changed: false,
+            };
+          });
+
+          return nextSlot;
+        });
+      });
+      return result;
+    };
 
     const fetchOverview = async () => {
       loading.value = true;
@@ -216,52 +334,57 @@ export default {
           throw new Error(response?.message || "获取场馆数据失败");
         }
         const data = response.data || {};
-        categories.value = adaptCategories(data.categories);
-        timeSlots.value = adaptTimeSlots(data.timeSlots);
+        timeSlotsBySport.value = adaptTimeSlotsBySport(
+          data.timeSlotsBySport || {}
+        );
+        if (!timeSlotsBySport.value[timeSlotSport.value]) {
+          timeSlotSport.value = SPORT_CONFIG[0].id;
+        }
       } catch (err) {
         console.error("获取场馆数据失败", err);
         error.value = err?.message || "获取场馆数据失败";
-        categories.value = [];
-        timeSlots.value = [];
+        timeSlotsBySport.value = {};
       } finally {
         loading.value = false;
       }
     };
 
-    const changeDate = async (direction) => {
-      const offset = direction === "prev" ? -1 : 1;
+    const changeDate = async (offset) => {
       currentDate.value = adjustDate(currentDate.value, offset);
       await fetchOverview();
     };
 
-    const toggleCourt = (type, court) => {
-      court.available = !court.available;
-      court.changed = true;
-      success.value = "";
-    };
-
-    const markCourtChanged = (court) => {
-      court.changed = true;
+    const changeTimeSlotSport = (sportId) => {
+      if (timeSlotSport.value === sportId) return;
+      timeSlotSport.value = sportId;
       success.value = "";
     };
 
     const toggleSlot = (slot) => {
       slot.available = !slot.available;
-      slot.changed = true;
+      (slot.courts || []).forEach((court) => {
+        court.available = slot.available;
+        updateCourtChangedState(slot, court);
+      });
+      updateSlotChangedState(slot);
       success.value = "";
     };
 
     const markSlotChanged = (slot) => {
-      slot.changed = true;
+      updateSlotChangedState(slot);
+      success.value = "";
+    };
+
+    const toggleSlotCourt = (slot, court) => {
+      court.available = !court.available;
+      updateCourtChangedState(slot, court);
       success.value = "";
     };
 
     const hasChanges = computed(() => {
-      const courtChanged = categories.value.some((category) =>
-        category.courts.some((court) => court.changed)
+      return Object.values(timeSlotsBySport.value).some((slots) =>
+        (slots || []).some((slot) => slot.changed)
       );
-      const slotChanged = timeSlots.value.some((slot) => slot.changed);
-      return courtChanged || slotChanged;
     });
 
     const saveChanges = async () => {
@@ -270,31 +393,30 @@ export default {
       error.value = "";
       success.value = "";
       try {
-        const courtPayload = [];
-        categories.value.forEach((category) => {
-          category.courts.forEach((court) => {
-            if (court.changed) {
-              courtPayload.push({
-                type: category.type,
+        const slotPayload = [];
+        Object.entries(timeSlotsBySport.value).forEach(([sportId, slots]) => {
+          (slots || []).forEach((slot) => {
+            if (!slot.changed) return;
+            const courtsChanged = (slot.courts || [])
+              .filter((court) => court.changed)
+              .map((court) => ({
                 number: court.number,
                 isAvailable: court.available,
                 note: court.note || undefined,
-              });
-            }
+              }));
+            slotPayload.push({
+              type: sportId,
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              isAvailable: slot.available,
+              note: slot.note || undefined,
+              courts: courtsChanged.length ? courtsChanged : undefined,
+            });
           });
         });
 
-        const slotPayload = timeSlots.value
-          .filter((slot) => slot.changed)
-          .map((slot) => ({
-            slotKey: slot.key,
-            isAvailable: slot.available,
-            note: slot.note || undefined,
-          }));
-
         const response = await api.adminVenue.updateStatus({
           date: currentDateParam.value,
-          courts: courtPayload.length ? courtPayload : undefined,
           timeSlots: slotPayload.length ? slotPayload : undefined,
         });
 
@@ -334,8 +456,11 @@ export default {
     });
 
     return {
-      categories,
-      timeSlots,
+      sportList,
+      timeSlotsBySport,
+      timeSlotSport,
+      activeTimeSlots,
+      timeSlotHint,
       loading,
       saving,
       error,
@@ -344,10 +469,10 @@ export default {
       hasChanges,
       fetchOverview,
       changeDate,
-      toggleCourt,
-      markCourtChanged,
+      changeTimeSlotSport,
       toggleSlot,
       markSlotChanged,
+      toggleSlotCourt,
       saveChanges,
       handleLogout,
     };
@@ -468,7 +593,7 @@ export default {
 }
 
 .info--loading {
-  background: rgba(59, 130, 246, 0.08);
+  background: rgba(59, 130, 246, 0.12);
   color: #1d4ed8;
 }
 
@@ -487,8 +612,7 @@ export default {
   color: #475569;
 }
 
-.category-block,
-.time-block {
+.time-manage {
   background: #fff;
   border-radius: 16px;
   padding: 18px;
@@ -496,30 +620,11 @@ export default {
   margin-bottom: 24px;
 }
 
-.category-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.category-header h2 {
-  margin: 0;
-  font-size: 18px;
-}
-
 .meta {
   font-size: 12px;
   color: #64748b;
 }
 
-.courts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 16px;
-}
-
-.court-item,
 .slot-item {
   border: 1px solid #e2e8f0;
   border-radius: 14px;
@@ -530,7 +635,6 @@ export default {
   gap: 10px;
 }
 
-.court-top,
 .slot-top {
   display: flex;
   justify-content: space-between;
@@ -538,7 +642,6 @@ export default {
   gap: 10px;
 }
 
-.court-number,
 .slot-label {
   font-weight: 600;
   color: #0f172a;
@@ -582,14 +685,91 @@ export default {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
+.slot-courts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.slot-court-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  background: #e2e8f0;
+  color: #1f2937;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.slot-court-btn.available {
+  background: rgba(34, 197, 94, 0.16);
+  color: #047857;
+}
+
+.slot-court-btn.booked {
+  background: rgba(248, 113, 113, 0.16);
+  color: #b91c1c;
+}
+
+.slot-court-btn.dirty {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.slot-court-btn:active {
+  transform: scale(0.97);
+}
+
 .meta-row {
   font-size: 12px;
   color: #94a3b8;
 }
 
+.time-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.time-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.time-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.time-tab {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  background: #e2e8f0;
+  color: #1f2937;
+  transition: background 0.2s ease;
+}
+
+.time-tab.active {
+  background: #0ea5e9;
+  color: #fff;
+}
+
 .slots-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .slots-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
 }
 </style>

@@ -1,7 +1,7 @@
 use aes::Aes128;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use cbc::cipher::{block_padding, BlockDecryptMut, KeyIvInit};
 use cbc::Decryptor;
-use cbc::cipher::{BlockDecryptMut, KeyIvInit, block_padding};
 use rand::Rng;
 use sha1::{Digest, Sha1};
 use std::collections::BTreeMap;
@@ -71,15 +71,18 @@ pub fn decrypt_phone_data(
     }
 
     // 将key和iv转换为固定大小的数组
-    let key_array: [u8; 16] = key.try_into()
+    let key_array: [u8; 16] = key
+        .try_into()
         .map_err(|_| "Failed to convert key to array".to_string())?;
-    let iv_array: [u8; 16] = iv_bytes.try_into()
+    let iv_array: [u8; 16] = iv_bytes
+        .try_into()
         .map_err(|_| "Failed to convert IV to array".to_string())?;
 
     let cipher = Aes128CbcDec::new(&key_array.into(), &iv_array.into());
 
     let mut buf = encrypted.clone();
-    let decrypted = cipher.decrypt_padded_mut::<block_padding::Pkcs7>(&mut buf)
+    let decrypted = cipher
+        .decrypt_padded_mut::<block_padding::Pkcs7>(&mut buf)
         .map_err(|e| format!("Decryption failed: {}", e))?;
 
     String::from_utf8(decrypted.to_vec())

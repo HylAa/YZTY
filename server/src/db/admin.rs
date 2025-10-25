@@ -54,7 +54,10 @@ pub async fn get_by_id(pool: &DbPool, id: u64) -> Result<Option<AdminUser>, sqlx
     .await
 }
 
-pub async fn get_by_username(pool: &DbPool, username: &str) -> Result<Option<AdminUser>, sqlx::Error> {
+pub async fn get_by_username(
+    pool: &DbPool,
+    username: &str,
+) -> Result<Option<AdminUser>, sqlx::Error> {
     sqlx::query_as::<_, AdminUser>(
         "SELECT id, username, password_hash, display_name, role, created_at, updated_at, last_login_at FROM admin_users WHERE username = ? LIMIT 1",
     )
@@ -63,7 +66,10 @@ pub async fn get_by_username(pool: &DbPool, username: &str) -> Result<Option<Adm
     .await
 }
 
-pub async fn insert_admin_user(pool: &DbPool, payload: &NewAdminUser<'_>) -> Result<AdminUser, sqlx::Error> {
+pub async fn insert_admin_user(
+    pool: &DbPool,
+    payload: &NewAdminUser<'_>,
+) -> Result<AdminUser, sqlx::Error> {
     let now = chrono::Utc::now().naive_utc();
 
     sqlx::query(

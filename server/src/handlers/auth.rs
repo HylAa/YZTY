@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use argon2::{password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString}, Argon2};
+use argon2::{
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2,
+};
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
@@ -34,13 +37,20 @@ fn decoding_key() -> DecodingKey {
 pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    let hashed = argon2.hash_password(password.as_bytes(), &salt)?.to_string();
+    let hashed = argon2
+        .hash_password(password.as_bytes(), &salt)?
+        .to_string();
     Ok(hashed)
 }
 
-pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, argon2::password_hash::Error> {
+pub fn verify_password(
+    password: &str,
+    password_hash: &str,
+) -> Result<bool, argon2::password_hash::Error> {
     let parsed_hash = PasswordHash::new(password_hash)?;
-    Ok(Argon2::default().verify_password(password.as_bytes(), &parsed_hash).is_ok())
+    Ok(Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok())
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -153,7 +163,10 @@ pub async fn api_admin_login(
 
     (
         StatusCode::OK,
-        Json(ApiResponse::ok(LoginResponse { token, user: profile })),
+        Json(ApiResponse::ok(LoginResponse {
+            token,
+            user: profile,
+        })),
     )
 }
 
@@ -164,16 +177,16 @@ pub async fn api_auth_me(
     let claims = match extract_claims_from_headers(&headers) {
         Ok(claims) => claims,
         Err(resp) => {
-          return (
-            StatusCode::UNAUTHORIZED,
-            Json(ApiResponse::<AdminProfile> {
-              code: resp.code,
-              message: resp.message,
-              data: None,
-              pagination: None,
-              total: None,
-            }),
-          );
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ApiResponse::<AdminProfile> {
+                    code: resp.code,
+                    message: resp.message,
+                    data: None,
+                    pagination: None,
+                    total: None,
+                }),
+            );
         }
     };
 

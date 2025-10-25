@@ -126,7 +126,10 @@ pub async fn api_swim_courses_by_phone(
     if phone.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(ApiResponse::<SwimCourseResponse>::msg(400, "手机号不能为空")),
+            Json(ApiResponse::<SwimCourseResponse>::msg(
+                400,
+                "手机号不能为空",
+            )),
         );
     }
 
@@ -134,14 +137,15 @@ pub async fn api_swim_courses_by_phone(
         Ok(rows) => {
             let records: Vec<SwimCourseItem> = rows.into_iter().map(SwimCourseItem::from).collect();
             let total_records = records.len();
-            let total_remaining_private_sessions = records
+            let total_remaining_private_sessions = records.iter().fold(0, |acc, item| {
+                acc + item.remaining_private_sessions.unwrap_or(0)
+            });
+            let total_spent_amount = records.iter().fold(0.0, |acc, item| {
+                acc + item.total_spent_amount.unwrap_or(0.0)
+            });
+            let total_checkins = records
                 .iter()
-                .fold(0, |acc, item| acc + item.remaining_private_sessions.unwrap_or(0));
-            let total_spent_amount = records
-                .iter()
-                .fold(0.0, |acc, item| acc + item.total_spent_amount.unwrap_or(0.0));
-            let total_checkins =
-                records.iter().fold(0, |acc, item| acc + item.total_checkins.unwrap_or(0));
+                .fold(0, |acc, item| acc + item.total_checkins.unwrap_or(0));
 
             let response = SwimCourseResponse {
                 phone: phone.to_string(),

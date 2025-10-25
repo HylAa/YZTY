@@ -114,6 +114,10 @@ export default {
       apiClient.get("/venues/overview", {
         params: date ? { date } : undefined,
       }),
+    getAvailability: ({ sport, date, startTime, endTime }) =>
+      apiClient.get("/venues/availability", {
+        params: { sport, date, startTime, endTime },
+      }),
   },
 
   adminVenue: {

@@ -33,7 +33,10 @@ pub async fn get_by_openid(pool: &DbPool, openid: &str) -> Result<Option<WechatU
     Ok(record)
 }
 /// 插入或更新微信用户信息
-pub async fn upsert_wechat_user(pool: &DbPool, payload: &NewWechatUser<'_>) -> Result<WechatUser, sqlx::Error> {
+pub async fn upsert_wechat_user(
+    pool: &DbPool,
+    payload: &NewWechatUser<'_>,
+) -> Result<WechatUser, sqlx::Error> {
     let now = Utc::now().naive_utc();
 
     sqlx::query(
@@ -54,7 +57,11 @@ pub async fn upsert_wechat_user(pool: &DbPool, payload: &NewWechatUser<'_>) -> R
         .ok_or(Error::RowNotFound)
 }
 /// 绑定手机号，成功后返回最新记录
-pub async fn bind_phone(pool: &DbPool, openid: &str, phone: &str) -> Result<Option<WechatUser>, sqlx::Error> {
+pub async fn bind_phone(
+    pool: &DbPool,
+    openid: &str,
+    phone: &str,
+) -> Result<Option<WechatUser>, sqlx::Error> {
     let now = Utc::now().naive_utc();
 
     sqlx::query("UPDATE wechat_users SET phone = ?, updated_at = ? WHERE openid = ?")

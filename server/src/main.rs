@@ -1,5 +1,8 @@
-use axum::{routing::{get, post}, Router};
 use axum::http::Method;
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::Serialize;
 use std::{net::SocketAddr, sync::Arc};
@@ -11,22 +14,12 @@ mod wechat;
 
 use db::{
     admin::{self, NewAdminUser},
-    init_pool,
-    venue,
-    DatabaseConfig,
-    DbPool,
+    init_pool, venue, DatabaseConfig, DbPool,
 };
 use handlers::{
-    api_admin_login,
-    api_admin_update_venue_status,
-    api_auth_me,
-    api_get_venue_overview,
-    api_student_courses_by_phone,
-    api_swim_courses_by_phone,
-    api_wechat_bind_phone,
-    api_wechat_decrypt_phone,
-    api_wechat_jssdk,
-    api_wechat_userinfo,
+    api_admin_login, api_admin_update_venue_status, api_auth_me, api_get_venue_availability,
+    api_get_venue_overview, api_student_courses_by_phone, api_swim_courses_by_phone,
+    api_wechat_bind_phone, api_wechat_decrypt_phone, api_wechat_jssdk, api_wechat_userinfo,
     hash_password,
 };
 use wechat::{WechatClient, WechatConfig};
@@ -49,18 +42,33 @@ pub struct ApiResponse<T> {
 }
 
 #[derive(Serialize, Clone)]
-struct Pagination { page: u32, limit: u32, pages: u32 }
+struct Pagination {
+    page: u32,
+    limit: u32,
+    pages: u32,
+}
 
 impl<T> ApiResponse<T> {
     fn ok(data: T) -> Self {
-        Self { code: 0, message: "ok".into(), data: Some(data), pagination: None, total: None }
+        Self {
+            code: 0,
+            message: "ok".into(),
+            data: Some(data),
+            pagination: None,
+            total: None,
+        }
     }
 
     fn msg(code: i32, msg: &str) -> Self {
-        Self { code, message: msg.into(), data: None, pagination: None, total: None }
+        Self {
+            code,
+            message: msg.into(),
+            data: None,
+            pagination: None,
+            total: None,
+        }
     }
 }
-
 
 #[tokio::main]
 async fn main() {
@@ -136,24 +144,16 @@ async fn main() {
         .route("/wechat/jssdkConfig", post(api_wechat_jssdk))
         .route("/wechat/getUserInfo", post(api_wechat_userinfo))
         .route("/wechat/bindPhone", post(api_wechat_bind_phone))
-        .route(
-            "/wechat/decryptPhoneNumber",
-            post(api_wechat_decrypt_phone),
-        )
+        .route("/wechat/decryptPhoneNumber", post(api_wechat_decrypt_phone))
         // 学员课程相关
-        .route(
-            "/api/student/courses",
-            get(api_student_courses_by_phone),
-        )
-        .route(
-            "/api/swim/courses",
-            get(api_swim_courses_by_phone),
-        )
+        .route("/api/student/courses", get(api_student_courses_by_phone))
+        .route("/api/swim/courses", get(api_swim_courses_by_phone))
         // 管理员认证
         .route("/api/auth/login", post(api_admin_login))
         .route("/api/auth/me", get(api_auth_me))
         // 场地占用
         .route("/api/venues/overview", get(api_get_venue_overview))
+        .route("/api/venues/availability", get(api_get_venue_availability))
         .route(
             "/api/admin/venues/status",
             post(api_admin_update_venue_status),
@@ -195,7 +195,9 @@ async fn ensure_default_admin(pool: &DbPool) -> Result<(), String> {
         "admin".to_string()
     });
     let password = std::env::var("ADMIN_DEFAULT_PASSWORD").unwrap_or_else(|_| {
-        eprintln!("警告: 未设置 ADMIN_DEFAULT_PASSWORD，使用默认密码 admin123。请尽快在环境变量中修改。");
+        eprintln!(
+            "警告: 未设置 ADMIN_DEFAULT_PASSWORD，使用默认密码 admin123。请尽快在环境变量中修改。"
+        );
         "admin123".to_string()
     });
 
