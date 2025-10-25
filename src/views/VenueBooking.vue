@@ -276,8 +276,8 @@ export default {
   setup() {
     const activeSport = ref("badminton");
     const currentDate = ref(new Date());
-    const selectedStart = ref(null); // minutes from midnight
-    const selectedEnd = ref(null); // minutes from midnight (inclusive slot start)
+    const selectedStart = ref(null); // minutes from midnight（开始时间）
+    const selectedEnd = ref(null); // minutes from midnight（结束时间，独占）
     const queriedRange = ref(null); // { sportId, start, end }
     const loading = ref(false);
     const error = ref("");
@@ -329,6 +329,7 @@ export default {
         ])
       );
       const latestStart = config.openMinutes.end - config.slotMinutes * config.minUnits;
+      const selectedStartValue = selectedStart.value;
       for (let start = config.openMinutes.start; start <= latestStart; start += config.slotMinutes) {
         const isDisabled = isSlotDisabled(config, start, isWeekend.value);
         const slotState = slotStateMap.get(start);
@@ -344,8 +345,18 @@ export default {
           label: minutesToLabel(start),
           disabled: isDisabled || slotFullyUnavailable,
           unavailable: slotFullyUnavailable,
+          boundaryOnly: false,
         });
       }
+      // 追加闭馆时间用于选择截止时间
+      slots.push({
+        key: `${config.id}-end`,
+        start: config.openMinutes.end,
+        label: minutesToLabel(config.openMinutes.end),
+        disabled: selectedStartValue === null,
+        unavailable: false,
+        boundaryOnly: true,
+      });
       return slots;
     });
 
@@ -354,9 +365,14 @@ export default {
       if (selectedStart.value === null) {
         return set;
       }
-      const end = selectedEnd.value ?? selectedStart.value;
-      const step = activeSportConfig.value.slotMinutes;
-      for (let m = selectedStart.value; m <= end; m += step) {
+      const config = activeSportConfig.value;
+      const step = config.slotMinutes;
+      const minEnd = selectedStart.value + config.slotMinutes * config.minUnits;
+      const endExclusive =
+        selectedEnd.value !== null
+          ? selectedEnd.value
+          : Math.min(minEnd, config.openMinutes.end);
+      for (let m = selectedStart.value; m < endExclusive; m += step) {
         set.add(m);
       }
       return set;
@@ -366,11 +382,12 @@ export default {
       if (selectedStart.value === null) return "";
       const config = activeSportConfig.value;
       const start = selectedStart.value;
-      const effectiveEnd =
+      const minEnd = start + config.slotMinutes * config.minUnits;
+      const endExclusive =
         selectedEnd.value !== null
-          ? selectedEnd.value + config.slotMinutes
-          : start + config.slotMinutes * config.minUnits;
-      return `${formatRangeText(start, effectiveEnd)}（暂未提交）`;
+          ? selectedEnd.value
+          : Math.min(minEnd, config.openMinutes.end);
+      return `${formatRangeText(start, endExclusive)}（暂未提交）`;
     });
 
     const resultRangeText = computed(() => {
@@ -534,57 +551,49 @@ export default {
 
     const handleSlotClick = (slot) => {
       if (slot.disabled) return;
-      const startValue = slot.start;
+      const target = slot.start;
       const config = activeSportConfig.value;
+      const minDuration = config.slotMinutes * config.minUnits;
       invalidateResults();
 
       if (selectedStart.value === null) {
-        selectedStart.value = startValue;
+        if (slot.boundaryOnly) {
+          return;
+        }
+        selectedStart.value = target;
         selectedEnd.value = null;
         availabilityResult.value = null;
         queriedRange.value = null;
         return;
       }
 
-      if (selectedEnd.value === null) {
-        if (startValue === selectedStart.value) {
+      if (slot.boundaryOnly) {
+        const duration = target - selectedStart.value;
+        if (duration < minDuration) {
+          selectedStart.value = target - minDuration;
+        }
+        selectedEnd.value = target;
+        return;
+      }
+
+      if (target <= selectedStart.value) {
+        if (target === selectedStart.value) {
           clearSelection();
-          return;
-        }
-        if (startValue < selectedStart.value) {
-          selectedStart.value = startValue;
+        } else {
+          selectedStart.value = target;
           selectedEnd.value = null;
-          return;
         }
-        const units = (startValue - selectedStart.value) / config.slotMinutes + 1;
-        if (units < config.minUnits) {
-          selectedStart.value = startValue;
-          selectedEnd.value = null;
-          return;
-        }
-        selectedEnd.value = startValue;
         return;
       }
 
-      if (startValue < selectedStart.value) {
-        selectedStart.value = startValue;
+      const duration = target - selectedStart.value;
+      if (duration < minDuration) {
+        selectedStart.value = target;
         selectedEnd.value = null;
         return;
       }
 
-      if (startValue === selectedStart.value) {
-        clearSelection();
-        return;
-      }
-
-      const units = (startValue - selectedStart.value) / config.slotMinutes + 1;
-      if (units < config.minUnits) {
-        selectedStart.value = startValue;
-        selectedEnd.value = null;
-        return;
-      }
-
-      selectedEnd.value = startValue;
+      selectedEnd.value = target;
     };
 
     const clearSelection = () => {
@@ -636,7 +645,7 @@ export default {
         loading.value = true;
 
         const config = activeSportConfig.value;
-        const endExclusive = selectedEnd.value + config.slotMinutes;
+        const endExclusive = selectedEnd.value;
         const startLabel = minutesToLabel(selectedStart.value);
         const endLabel = minutesToLabel(endExclusive);
 
@@ -686,9 +695,13 @@ export default {
 
     const slotClass = (slot) => {
       const classes = [];
+      if (slot.boundaryOnly) classes.push("boundary");
       if (slot.disabled) classes.push("disabled");
       if (slot.unavailable) classes.push("unavailable");
       if (selectedSlotsSet.value.has(slot.start)) classes.push("selected");
+      if (selectedEnd.value !== null && slot.start === selectedEnd.value) {
+        classes.push("selected-end");
+      }
       return classes.join(" ");
     };
 
@@ -895,6 +908,15 @@ function buildBaseCourts(meta) {
 .time-slot.selected {
   background: #07c160;
   color: #fff;
+}
+
+.time-slot.boundary {
+  border-style: dashed;
+}
+
+.time-slot.selected-end {
+  border: 1px solid #07c160;
+  color: #047857;
 }
 
 .time-slot.disabled {
