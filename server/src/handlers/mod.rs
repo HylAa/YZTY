@@ -1,10 +1,12 @@
 pub mod auth;
+pub mod import;
 pub mod student_course;
 pub mod swim_course;
 pub mod venue;
 pub mod wechat;
 
 pub use auth::{api_admin_login, api_auth_me, hash_password};
+pub use import::{api_import_student_course, api_import_swim_customer};
 pub use student_course::api_student_courses_by_phone;
 pub use swim_course::api_swim_courses_by_phone;
 pub use venue::{

@@ -18,9 +18,9 @@ use db::{
 };
 use handlers::{
     api_admin_login, api_admin_update_venue_status, api_auth_me, api_get_venue_availability,
-    api_get_venue_overview, api_student_courses_by_phone, api_swim_courses_by_phone,
-    api_wechat_bind_phone, api_wechat_decrypt_phone, api_wechat_jssdk, api_wechat_userinfo,
-    hash_password,
+    api_get_venue_overview, api_import_student_course, api_import_swim_customer,
+    api_student_courses_by_phone, api_swim_courses_by_phone, api_wechat_bind_phone,
+    api_wechat_decrypt_phone, api_wechat_jssdk, api_wechat_userinfo, hash_password,
 };
 use wechat::{WechatClient, WechatConfig};
 
@@ -157,6 +157,14 @@ async fn main() {
         .route(
             "/api/admin/venues/status",
             post(api_admin_update_venue_status),
+        )
+        .route(
+            "/api/admin/import/student-course",
+            post(api_import_student_course),
+        )
+        .route(
+            "/api/admin/import/swim-customer",
+            post(api_import_swim_customer),
         )
         .with_state(state)
         .layer(cors);

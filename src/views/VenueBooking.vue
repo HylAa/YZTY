@@ -1,9 +1,9 @@
 <template>
   <div class="venue-query-page">
-    <header class="page-header">
+    <!-- <header class="page-header">
       <h1>场馆查询系统</h1>
       <p>查询场地可用状态</p>
-    </header>
+    </header> -->
 
     <div class="sport-tabs">
       <button
@@ -22,7 +22,9 @@
       <button type="button" class="date-btn" @click="changeDate(-1)">
         ← 前一天
       </button>
-      <div class="current-date">{{ formattedCurrentDate }}</div>
+      <div class="current-date">
+        {{ formattedCurrentDate }}
+      </div>
       <button type="button" class="date-btn" @click="changeDate(1)">
         后一天 →
       </button>
@@ -31,14 +33,18 @@
     <section class="rules-card">
       <strong>预约规则：</strong>
       <ul>
-        <li v-for="rule in activeRules" :key="rule">{{ rule }}</li>
+        <li v-for="rule in activeRules" :key="rule">
+          {{ rule }}
+        </li>
       </ul>
     </section>
 
     <section class="time-section">
       <div class="time-header">
         <h2>选择查询时段</h2>
-        <span v-if="rangePreview" class="range-preview">{{ rangePreview }}</span>
+        <span v-if="rangePreview" class="range-preview">{{
+          rangePreview
+        }}</span>
       </div>
       <div class="time-slots">
         <button
@@ -54,20 +60,30 @@
         </button>
       </div>
       <p class="time-hint">
-        至少连续选择 {{ activeSportConfig.minUnits * (activeSportConfig.slotMinutes / 30) }} 个时间单位（{{ minimumDurationText }}）
+        至少连续选择
+        {{
+          activeSportConfig.minUnits * (activeSportConfig.slotMinutes / 30)
+        }}
+        个时间单位（{{ minimumDurationText }}）
       </p>
     </section>
 
     <section class="info-area">
       <div v-if="loading" class="info info--loading">正在加载场地状态...</div>
-      <div v-else-if="error" class="info info--error">{{ error }}</div>
-      <div v-else-if="success" class="info info--success">{{ success }}</div>
+      <div v-else-if="error" class="info info--error">
+        {{ error }}
+      </div>
+      <div v-else-if="success" class="info info--success">
+        {{ success }}
+      </div>
     </section>
 
     <section class="results-card">
       <div class="results-title">
         <h2>场地可用状态</h2>
-        <span v-if="queriedRange" class="results-range">{{ resultRangeText }}</span>
+        <span v-if="queriedRange" class="results-range">{{
+          resultRangeText
+        }}</span>
       </div>
 
       <div v-if="!queriedRange" class="results-placeholder">
@@ -83,11 +99,18 @@
           class="court-card"
           :class="[`${activeSport}-court`, { unavailable: !court.available }]"
         >
-          <div class="court-number">{{ court.displayName }}</div>
-          <div class="court-status" :class="court.available ? 'available' : 'booked'">
-            {{ court.available ? '可用' : '占用' }}
+          <div class="court-number">
+            {{ court.displayName }}
           </div>
-          <div v-if="court.note" class="court-note">{{ court.note }}</div>
+          <div
+            class="court-status"
+            :class="court.available ? 'available' : 'booked'"
+          >
+            {{ court.available ? "可用" : "占用" }}
+          </div>
+          <div v-if="court.note" class="court-note">
+            {{ court.note }}
+          </div>
           <div v-else-if="court.updatedAt" class="court-note">
             更新于 {{ court.updatedAt }}
           </div>
@@ -124,7 +147,7 @@ const SPORT_CONFIG = [
       "营业时间：09:00-21:00",
       "周一至周五可按半小时查询，至少连续1小时",
       "周末仅支持整点预约，至少连续1小时",
-      "共 18 片场地"
+      "共 18 片场地",
     ],
   },
   {
@@ -140,7 +163,7 @@ const SPORT_CONFIG = [
       "营业时间：09:00-21:00",
       "支持半小时为单位的查询，至少连续1小时",
       "可跨越半点，示例：09:30-11:30",
-      "共 4 块场地（1A/1B/2A/2B）"
+      "共 4 块场地（1A/1B/2A/2B）",
     ],
   },
   {
@@ -155,7 +178,7 @@ const SPORT_CONFIG = [
     rules: [
       "营业时间：08:00-22:30",
       "半小时为单位，至少连续1小时",
-      "共 2 块场地（南场 / 北场）"
+      "共 2 块场地（南场 / 北场）",
     ],
   },
 ];
@@ -176,9 +199,11 @@ const labelToMinutes = (label) => {
   return hours * 60 + mins;
 };
 
-const formatRangeText = (start, end) => `${minutesToLabel(start)} - ${minutesToLabel(end)}`;
+const formatRangeText = (start, end) =>
+  `${minutesToLabel(start)} - ${minutesToLabel(end)}`;
 
-const buildSlotKey = (sportId, startLabel, endLabel) => `${sportId}|${startLabel}-${endLabel}`;
+const buildSlotKey = (sportId, startLabel, endLabel) =>
+  `${sportId}|${startLabel}-${endLabel}`;
 
 const buildSlotCourtsBase = (meta) => {
   const baseCourts = buildBaseCourts(meta);
@@ -262,7 +287,9 @@ const adaptTimeSlotsBySport = (source = {}) => {
           available,
           note: recordCourt?.note || "",
           updatedAt:
-            recordCourt?.updated_at || recordCourt?.updatedAt || nextSlot.updatedAt,
+            recordCourt?.updated_at ||
+            recordCourt?.updatedAt ||
+            nextSlot.updatedAt,
         };
       });
       return nextSlot;
@@ -293,7 +320,12 @@ export default {
     );
 
     const formattedCurrentDate = computed(() => {
-      const options = { year: "numeric", month: "numeric", day: "numeric", weekday: "long" };
+      const options = {
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        weekday: "long",
+      };
       return currentDate.value.toLocaleDateString("zh-CN", options);
     });
 
@@ -310,7 +342,8 @@ export default {
     });
 
     const minimumDurationText = computed(() => {
-      const minutes = activeSportConfig.value.minUnits * activeSportConfig.value.slotMinutes;
+      const minutes =
+        activeSportConfig.value.minUnits * activeSportConfig.value.slotMinutes;
       if (minutes % 60 === 0) {
         return `${minutes / 60}小时`;
       }
@@ -328,9 +361,14 @@ export default {
           item,
         ])
       );
-      const latestStart = config.openMinutes.end - config.slotMinutes * config.minUnits;
+      const latestStart =
+        config.openMinutes.end - config.slotMinutes * config.minUnits;
       const selectedStartValue = selectedStart.value;
-      for (let start = config.openMinutes.start; start <= latestStart; start += config.slotMinutes) {
+      for (
+        let start = config.openMinutes.start;
+        start <= latestStart;
+        start += config.slotMinutes
+      ) {
         const isDisabled = isSlotDisabled(config, start, isWeekend.value);
         const slotState = slotStateMap.get(start);
         const hasCourtAvailable = slotState
@@ -396,12 +434,19 @@ export default {
     });
 
     const isQueryDisabled = computed(
-      () => selectedStart.value === null || selectedEnd.value === null || loading.value
+      () =>
+        selectedStart.value === null ||
+        selectedEnd.value === null ||
+        loading.value
     );
 
     const extractCourtId = (sportId, number) => `${sportId}-${number}`;
 
-    const computeAvailabilityFromConfig = (sportId, startMinutes, endExclusive) => {
+    const computeAvailabilityFromConfig = (
+      sportId,
+      startMinutes,
+      endExclusive
+    ) => {
       const meta = SPORT_CONFIG.find((item) => item.id === sportId);
       if (!meta) {
         return null;
@@ -444,7 +489,10 @@ export default {
                 : noteCandidate;
             }
             const updatedCandidate =
-              courtRecord?.updated_at || courtRecord?.updatedAt || slot.updatedAt || "";
+              courtRecord?.updated_at ||
+              courtRecord?.updatedAt ||
+              slot.updatedAt ||
+              "";
             if (updatedCandidate) {
               info.updated_at = updatedCandidate;
             }
@@ -474,7 +522,10 @@ export default {
           if (!target.note && noteValue) {
             target.note = noteValue;
           }
-          if ((!target.updated_at || target.updated_at === "") && updatedValue) {
+          if (
+            (!target.updated_at || target.updated_at === "") &&
+            updatedValue
+          ) {
             target.updated_at = updatedValue;
           }
         } else {
@@ -611,7 +662,9 @@ export default {
           throw new Error(response?.message || "获取场馆数据失败");
         }
         const data = response.data || {};
-        timeSlotsBySport.value = adaptTimeSlotsBySport(data.timeSlotsBySport || {});
+        timeSlotsBySport.value = adaptTimeSlotsBySport(
+          data.timeSlotsBySport || {}
+        );
         lastLoadedDate.value = currentDateParam.value;
       } catch (err) {
         console.error("获取场馆数据失败", err);
@@ -629,7 +682,11 @@ export default {
     };
 
     const submitQuery = async () => {
-      if (isQueryDisabled.value || selectedStart.value === null || selectedEnd.value === null) {
+      if (
+        isQueryDisabled.value ||
+        selectedStart.value === null ||
+        selectedEnd.value === null
+      ) {
         return;
       }
       loading.value = true;
@@ -670,9 +727,7 @@ export default {
           activeSport.value
         );
         const finalCourts =
-          mergedCourts.length > 0
-            ? mergedCourts
-            : configResult?.courts || [];
+          mergedCourts.length > 0 ? mergedCourts : configResult?.courts || [];
         availabilityResult.value = {
           sport: activeSport.value,
           courts: finalCourts,

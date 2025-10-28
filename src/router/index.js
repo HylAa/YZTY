@@ -7,6 +7,7 @@ const CourseList = () => import("../views/CourseList.vue");
 const VenueBooking = () => import("../views/VenueBooking.vue");
 const AdminLogin = () => import("../views/admin/AdminLogin.vue");
 const AdminVenueManager = () => import("../views/admin/AdminVenueManager.vue");
+const AdminDataImport = () => import("../views/admin/AdminDataImport.vue");
 
 const routes = [
   {
@@ -38,6 +39,12 @@ const routes = [
     name: "AdminVenueManager",
     component: AdminVenueManager,
     meta: { title: "场馆占用管理 - 赢在体育", requiresAdmin: true },
+  },
+  {
+    path: "/admin/import",
+    name: "AdminDataImport",
+    component: AdminDataImport,
+    meta: { title: "数据导入 - 赢在体育", requiresAdmin: true },
   },
   {
     path: "/package/:id",

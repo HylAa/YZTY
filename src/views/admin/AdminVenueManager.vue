@@ -5,8 +5,11 @@
         <h1>场馆占用管理</h1>
         <p class="subtitle">配置不同运动的场地与时段占用情况</p>
       </div>
-      <div class="header-actions">
-        <button class="ghost-btn" @click="handleLogout">退出登录</button>
+            <div class="header-actions">
+        <button class="primary-btn" type="button" @click="goToImportPage">
+          数据导入
+        </button>
+        <button class="ghost-btn" type="button" @click="handleLogout">退出登录</button>
       </div>
     </header>
 
@@ -102,6 +105,7 @@
 
 <script>
 import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import api from "../../api";
 
 const WEEK_MAP = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
@@ -240,6 +244,8 @@ export default {
     const saving = ref(false);
     const error = ref("");
     const success = ref("");
+
+    const router = useRouter();
 
     const formattedCurrentDate = computed(() => formatDisplayDate(currentDate.value));
     const currentDateParam = computed(() => formatDateParam(currentDate.value));
@@ -441,6 +447,10 @@ export default {
       window.location.href = "/admin/login";
     };
 
+    const goToImportPage = () => {
+      router.push("/admin/import");
+    };
+
     const ensureAuth = async () => {
       try {
         await api.auth.getCurrentUser();
@@ -474,6 +484,7 @@ export default {
       markSlotChanged,
       toggleSlotCourt,
       saveChanges,
+      goToImportPage,
       handleLogout,
     };
   },

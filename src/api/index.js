@@ -124,6 +124,17 @@ export default {
     updateStatus: (payload) => apiClient.post("/admin/venues/status", payload),
   },
 
+  adminImport: {
+    uploadStudentCourses: (formData) =>
+      apiClient.post("/admin/import/student-course", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }),
+    uploadSwimCustomers: (formData) =>
+      apiClient.post("/admin/import/swim-customer", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }),
+  },
+
   // WeChat endpoints
   wechat: {
     getJssdkConfig: (url) => wechatClient.post("/wechat/jssdkConfig", { url }),
