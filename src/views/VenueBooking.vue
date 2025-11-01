@@ -361,36 +361,53 @@ export default {
           item,
         ])
       );
-      const latestStart =
-        config.openMinutes.end - config.slotMinutes * config.minUnits;
       const selectedStartValue = selectedStart.value;
+      const toDisplayLabel = (label) =>
+        label.startsWith("0") ? label.slice(1) : label;
+      const isFullHourWeekend = config.weekendFullHour && isWeekend.value;
+      const blockDuration = isFullHourWeekend
+        ? config.slotMinutes * config.minUnits
+        : config.slotMinutes;
+      const latestStart = config.openMinutes.end - blockDuration;
       for (
         let start = config.openMinutes.start;
         start <= latestStart;
-        start += config.slotMinutes
+        start += blockDuration
       ) {
         const isDisabled = isSlotDisabled(config, start, isWeekend.value);
-        const slotState = slotStateMap.get(start);
-        const hasCourtAvailable = slotState
-          ? (slotState.courts || []).some((court) => court.available)
-          : true;
-        const slotFullyUnavailable = slotState
-          ? !slotState.available && !hasCourtAvailable
-          : false;
+        const segmentCount = Math.max(
+          1,
+          blockDuration / Math.max(config.slotMinutes, 1)
+        );
+        const segmentStarts = Array.from({ length: segmentCount }, (_, index) =>
+          start + index * config.slotMinutes
+        );
+        const hasUnavailableSegment = segmentStarts.some((segmentStart) => {
+          const segmentState = slotStateMap.get(segmentStart);
+          if (!segmentState) return false;
+          const courts = segmentState.courts || [];
+          const hasAvailableCourt = courts.some((court) => court.available);
+          return segmentState.available === false && !hasAvailableCourt;
+        });
+        const startLabel = minutesToLabel(start);
+        const endLabel = minutesToLabel(start + blockDuration);
         slots.push({
           key: start,
           start,
-          label: minutesToLabel(start),
-          disabled: isDisabled || slotFullyUnavailable,
-          unavailable: slotFullyUnavailable,
+          end: start + blockDuration,
+          label: `（${toDisplayLabel(startLabel)}-${toDisplayLabel(endLabel)}）`,
+          disabled: isDisabled || hasUnavailableSegment,
+          unavailable: hasUnavailableSegment,
           boundaryOnly: false,
         });
       }
       // 追加闭馆时间用于选择截止时间
+      const closingLabel = minutesToLabel(config.openMinutes.end);
       slots.push({
         key: `${config.id}-end`,
         start: config.openMinutes.end,
-        label: minutesToLabel(config.openMinutes.end),
+        end: config.openMinutes.end,
+        label: `结束 ${toDisplayLabel(closingLabel)}`,
         disabled: selectedStartValue === null,
         unavailable: false,
         boundaryOnly: true,
@@ -602,49 +619,78 @@ export default {
 
     const handleSlotClick = (slot) => {
       if (slot.disabled) return;
-      const target = slot.start;
       const config = activeSportConfig.value;
       const minDuration = config.slotMinutes * config.minUnits;
+      const slotStart = slot.start;
+      const slotEnd = slot.boundaryOnly ? slot.start : slot.end;
       invalidateResults();
 
       if (selectedStart.value === null) {
         if (slot.boundaryOnly) {
           return;
         }
-        selectedStart.value = target;
-        selectedEnd.value = null;
+        const slotDuration = slotEnd - slotStart;
+        let candidateStart = slotStart;
+        let candidateEnd =
+          slotDuration >= minDuration
+            ? slotEnd
+            : slotStart + minDuration;
+        candidateEnd = Math.min(candidateEnd, config.openMinutes.end);
+
+        if (candidateEnd - candidateStart < minDuration) {
+          candidateStart = Math.max(
+            config.openMinutes.start,
+            candidateEnd - minDuration
+          );
+          const offset =
+            (candidateStart - config.openMinutes.start) % config.slotMinutes;
+          if (offset !== 0) {
+            candidateStart = Math.max(
+              config.openMinutes.start,
+              candidateStart - offset
+            );
+          }
+        }
+
+        selectedStart.value = candidateStart;
+        const finalDuration = candidateEnd - candidateStart;
+        selectedEnd.value = finalDuration >= minDuration ? candidateEnd : null;
         availabilityResult.value = null;
         queriedRange.value = null;
         return;
       }
 
       if (slot.boundaryOnly) {
-        const duration = target - selectedStart.value;
+        const duration = slotEnd - selectedStart.value;
         if (duration < minDuration) {
-          selectedStart.value = target - minDuration;
+          const adjustedStart = Math.max(
+            config.openMinutes.start,
+            slotEnd - minDuration
+          );
+          selectedStart.value = adjustedStart;
         }
-        selectedEnd.value = target;
+        selectedEnd.value = slotEnd;
         return;
       }
 
-      if (target <= selectedStart.value) {
-        if (target === selectedStart.value) {
+      if (slotStart <= selectedStart.value) {
+        if (slotStart === selectedStart.value) {
           clearSelection();
         } else {
-          selectedStart.value = target;
+          selectedStart.value = slotStart;
           selectedEnd.value = null;
         }
         return;
       }
 
-      const duration = target - selectedStart.value;
+      const duration = slotEnd - selectedStart.value;
       if (duration < minDuration) {
-        selectedStart.value = target;
+        selectedStart.value = slotStart;
         selectedEnd.value = null;
         return;
       }
 
-      selectedEnd.value = target;
+      selectedEnd.value = slotEnd;
     };
 
     const clearSelection = () => {
@@ -750,11 +796,25 @@ export default {
 
     const slotClass = (slot) => {
       const classes = [];
+      const isFinalBlock =
+        !slot.boundaryOnly &&
+        selectedEnd.value !== null &&
+        slot.end === selectedEnd.value;
+
       if (slot.boundaryOnly) classes.push("boundary");
       if (slot.disabled) classes.push("disabled");
       if (slot.unavailable) classes.push("unavailable");
-      if (selectedSlotsSet.value.has(slot.start)) classes.push("selected");
-      if (selectedEnd.value !== null && slot.start === selectedEnd.value) {
+      if (selectedSlotsSet.value.has(slot.start) && !isFinalBlock) {
+        classes.push("selected");
+      }
+      if (isFinalBlock) {
+        classes.push("selected-final");
+      }
+      if (
+        slot.boundaryOnly &&
+        selectedEnd.value !== null &&
+        slot.start === selectedEnd.value
+      ) {
         classes.push("selected-end");
       }
       return classes.join(" ");
@@ -949,7 +1009,7 @@ function buildBaseCourts(meta) {
   border: none;
   border-radius: 10px;
   padding: 10px 0;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   background: #f3f4f6;
   color: #1f2937;
@@ -965,13 +1025,21 @@ function buildBaseCourts(meta) {
   color: #fff;
 }
 
+.time-slot.selected-final {
+  background: #ef4444;
+  color: #fff;
+  border: 1px solid #dc2626;
+}
+
 .time-slot.boundary {
   border-style: dashed;
 }
 
 .time-slot.selected-end {
-  border: 1px solid #07c160;
-  color: #047857;
+  background: #ef4444;
+  color: #fff;
+  border: 1px solid #dc2626;
+  border-style: solid;
 }
 
 .time-slot.disabled {
